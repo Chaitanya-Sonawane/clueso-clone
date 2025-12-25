@@ -6,7 +6,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Backend API configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 // Helper function to make API calls with proper error handling
 async function apiCall(endpoint: string, options: RequestInit = {}) {
@@ -21,15 +21,33 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
       },
     });
 
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON response:', text);
+      throw new Error(`Server returned non-JSON response: ${response.status} ${response.statusText}`);
+    }
+
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.message || `HTTP error! status: ${response.status}`);
+      throw new Error(data.message || data.error || `HTTP error! status: ${response.status}`);
     }
     
     return data;
   } catch (error) {
     console.error(`API call failed for ${endpoint}:`, error);
+    
+    // Handle specific error types
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Unable to connect to server. Please check if the backend is running.');
+    }
+    
+    if (error.message.includes('JSON')) {
+      throw new Error('Server returned invalid response. Please try again.');
+    }
+    
     throw error;
   }
 }

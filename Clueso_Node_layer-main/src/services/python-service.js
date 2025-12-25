@@ -1,4 +1,5 @@
-const fetch = require('node-fetch');
+const http = require('http');
+const https = require('https');
 const path = require('path');
 const { Logger } = require('../config');
 
@@ -6,6 +7,59 @@ class PythonService {
   constructor() {
     this.pythonBaseUrl = process.env.PYTHON_LAYER_URL || 'http://localhost:8000';
     this.timeout = parseInt(process.env.PYTHON_SERVICE_TIMEOUT || '3000', 10);
+  }
+
+  // Helper method to make HTTP requests without node-fetch
+  async makeRequest(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const isHttps = urlObj.protocol === 'https:';
+      const httpModule = isHttps ? https : http;
+      
+      const requestOptions = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || (isHttps ? 443 : 80),
+        path: urlObj.pathname + urlObj.search,
+        method: options.method || 'GET',
+        headers: options.headers || {},
+        timeout: this.timeout
+      };
+
+      const req = httpModule.request(requestOptions, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            const result = {
+              ok: res.statusCode >= 200 && res.statusCode < 300,
+              status: res.statusCode,
+              statusText: res.statusMessage,
+              json: () => Promise.resolve(JSON.parse(data)),
+              text: () => Promise.resolve(data)
+            };
+            resolve(result);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      if (options.body) {
+        req.write(options.body);
+      }
+      
+      req.end();
+    });
   }
 
   /**
@@ -43,20 +97,13 @@ class PythonService {
         deepgramTimelineSegments: deepgramResponse?.timeline?.length || 0
       });
 
-      // Create AbortController for timeout handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-      const response = await fetch(`${this.pythonBaseUrl}/audio-full-process`, {
+      const response = await this.makeRequest(`${this.pythonBaseUrl}/audio-full-process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
-        signal: controller.signal
+        body: JSON.stringify(payload)
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -72,7 +119,7 @@ class PythonService {
       Logger.error('[Python Service] Error sending data to Python layer:', error);
 
       // Handle timeout errors
-      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+      if (error.message.includes('timeout')) {
         throw new Error(`Request to Python layer timed out after ${this.timeout}ms`);
       }
 
@@ -94,20 +141,13 @@ class PythonService {
     try {
       Logger.info(`[Python Service] Sending raw text with DOM events to Python layer`);
 
-      // Create AbortController for timeout handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-      const response = await fetch(`${this.pythonBaseUrl}/api/process-raw`, {
+      const response = await this.makeRequest(`${this.pythonBaseUrl}/api/process-raw`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
-        signal: controller.signal
+        body: JSON.stringify(data)
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -122,7 +162,7 @@ class PythonService {
     } catch (error) {
       Logger.error('[Python Service] Error sending raw data to Python layer:', error);
 
-      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+      if (error.message.includes('timeout')) {
         throw new Error(`Request to Python layer timed out after ${this.timeout}ms`);
       }
 
@@ -140,16 +180,9 @@ class PythonService {
    */
   async healthCheck() {
     try {
-      // Create AbortController for timeout handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(`${this.pythonBaseUrl}/health`, {
-        method: 'GET',
-        signal: controller.signal
+      const response = await this.makeRequest(`${this.pythonBaseUrl}/health`, {
+        method: 'GET'
       });
-
-      clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
       Logger.warn('[Python Service] Health check failed:', error.message);

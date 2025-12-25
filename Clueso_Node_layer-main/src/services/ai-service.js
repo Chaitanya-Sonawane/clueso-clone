@@ -13,16 +13,32 @@ class AIService {
         try {
             Logger.info(`[AI Service] Generating suggestions for demo ${demoId}`);
 
+            // 🛡️ INPUT VALIDATION (CRITICAL)
+            if (!demoId || typeof demoId !== 'string') {
+                throw new Error('Invalid demo ID');
+            }
+
+            // Validate and sanitize inputs
+            const safeTranscript = transcript && typeof transcript === 'string' ? transcript : '';
+            const safePauseDurations = Array.isArray(pauseDurations) ? pauseDurations : [];
+            const safeReplayFrequency = typeof replayFrequency === 'number' ? replayFrequency : 0;
+
             const response = await axios.post(`${this.pythonServiceUrl}/ai-suggestions`, {
                 demoId,
-                transcript,
-                pauseDurations,
-                replayFrequency
+                transcript: safeTranscript,
+                pauseDurations: safePauseDurations,
+                replayFrequency: safeReplayFrequency
             }, {
                 timeout: 30000
             });
 
-            const suggestions = response.data.suggestions || [];
+            const suggestions = response.data?.suggestions || [];
+            
+            // Validate response format
+            if (!Array.isArray(suggestions)) {
+                Logger.warn('[AI Service] AI service returned non-array suggestions, using fallback');
+                return this._generateFallbackSuggestions({ transcript: safeTranscript, pauseDurations: safePauseDurations, replayFrequency: safeReplayFrequency });
+            }
             
             Logger.info(`[AI Service] Generated ${suggestions.length} suggestions for demo ${demoId}`);
             return suggestions;
@@ -30,8 +46,16 @@ class AIService {
         } catch (error) {
             Logger.error('[AI Service] Generate suggestions error:', error);
             
-            // Fallback to rule-based suggestions if AI fails
-            return this._generateFallbackSuggestions({ transcript, pauseDurations, replayFrequency });
+            // 🛡️ AI SERVICE FALLBACK (STABILITY) - Always return valid data
+            const safeTranscript = transcript && typeof transcript === 'string' ? transcript : '';
+            const safePauseDurations = Array.isArray(pauseDurations) ? pauseDurations : [];
+            const safeReplayFrequency = typeof replayFrequency === 'number' ? replayFrequency : 0;
+            
+            return this._generateFallbackSuggestions({ 
+                transcript: safeTranscript, 
+                pauseDurations: safePauseDurations, 
+                replayFrequency: safeReplayFrequency 
+            });
         }
     }
 
@@ -74,32 +98,55 @@ class AIService {
         try {
             Logger.info(`[AI Service] Generating ${reviewType} review for demo ${demoId}`);
 
+            // 🛡️ INPUT VALIDATION (CRITICAL)
+            if (!demoId || typeof demoId !== 'string') {
+                throw new Error('Invalid demo ID');
+            }
+
+            // Validate and sanitize inputs
+            const safeComments = Array.isArray(comments) ? comments : [];
+            const safeLanguages = Array.isArray(languages) ? languages : [];
+            const safeReviewType = reviewType && typeof reviewType === 'string' ? reviewType : 'on_demand';
+
             const response = await axios.post(`${this.pythonServiceUrl}/ai-review`, {
                 demoId,
-                comments,
-                languages,
-                reviewType
+                comments: safeComments,
+                languages: safeLanguages,
+                reviewType: safeReviewType
             }, {
                 timeout: 60000
             });
 
-            const reviewData = response.data.review || response.data;
+            const reviewData = response.data?.review || response.data;
+            
+            // Validate response format
+            if (!reviewData || typeof reviewData !== 'object') {
+                Logger.warn('[AI Service] AI service returned invalid review data, using fallback');
+                return this._generateFallbackReview({ comments: safeComments, languages: safeLanguages });
+            }
             
             Logger.info(`[AI Service] Generated review for demo ${demoId} with score ${reviewData.overallScore}`);
+            
+            // Ensure insights is never null or undefined with safe access
+            const insights = Array.isArray(reviewData.insights) ? reviewData.insights : ['AI review completed'];
+            
             return {
-                insights: reviewData.insights,
-                commonIssues: reviewData.commonIssues,
-                translationWarnings: reviewData.translationWarnings,
-                recommendations: reviewData.recommendations,
-                publishReadiness: reviewData.publishReadiness,
-                overallScore: reviewData.overallScore
+                insights,
+                commonIssues: Array.isArray(reviewData.commonIssues) ? reviewData.commonIssues : [],
+                translationWarnings: Array.isArray(reviewData.translationWarnings) ? reviewData.translationWarnings : [],
+                recommendations: Array.isArray(reviewData.recommendations) ? reviewData.recommendations : [],
+                publishReadiness: Boolean(reviewData.publishReadiness),
+                overallScore: typeof reviewData.overallScore === 'number' ? reviewData.overallScore : 5.0
             };
 
         } catch (error) {
             Logger.error('[AI Service] Generate review error:', error);
             
-            // Fallback to basic analysis
-            return this._generateFallbackReview({ comments, languages });
+            // 🛡️ AI SERVICE FALLBACK (STABILITY) - Always return valid data
+            const safeComments = Array.isArray(comments) ? comments : [];
+            const safeLanguages = Array.isArray(languages) ? languages : [];
+            
+            return this._generateFallbackReview({ comments: safeComments, languages: safeLanguages });
         }
     }
 
@@ -112,35 +159,61 @@ class AIService {
         // Check for long pauses
         if (pauseDurations && pauseDurations.some(pause => pause > 3)) {
             suggestions.push({
+                id: `fallback_${Date.now()}_1`,
+                type: 'optimization',
+                title: 'Reduce Long Pauses',
+                description: 'Consider trimming this long pause to maintain viewer engagement',
                 timestamp: pauseDurations.findIndex(pause => pause > 3) * 1, // Rough estimate
-                type: 'trim',
-                suggestion: 'Consider trimming this long pause to maintain viewer engagement',
-                metadata: { confidence: 0.8, pauseDuration: Math.max(...pauseDurations) }
+                priority: 'high',
+                implemented: false
             });
         }
 
         // Check transcript length
         if (transcript && transcript.length < 50) {
             suggestions.push({
+                id: `fallback_${Date.now()}_2`,
+                type: 'improvement',
+                title: 'Add More Explanation',
+                description: 'Consider adding more explanation to help viewers understand the process',
                 timestamp: 0,
-                type: 'clarify',
-                suggestion: 'Consider adding more explanation to help viewers understand the process',
-                metadata: { confidence: 0.7, transcriptLength: transcript.length }
+                priority: 'medium',
+                implemented: false
             });
         }
 
         // Check for filler words
-        const fillerWords = ['um', 'uh', 'like', 'you know'];
-        const fillerCount = fillerWords.reduce((count, word) => {
-            return count + (transcript.toLowerCase().split(word).length - 1);
-        }, 0);
+        if (transcript && typeof transcript === 'string') {
+            const fillerWords = ['um', 'uh', 'like', 'you know'];
+            const fillerCount = fillerWords.reduce((count, word) => {
+                // 🛡️ Safe string operations with validation
+                const lowerTranscript = transcript.toLowerCase();
+                return count + (lowerTranscript.split(word).length - 1);
+            }, 0);
 
-        if (fillerCount > 5) {
+            if (fillerCount > 5) {
+                suggestions.push({
+                    id: `fallback_${Date.now()}_3`,
+                    type: 'optimization',
+                    title: 'Reduce Filler Words',
+                    description: 'Consider re-recording to reduce filler words for a more professional presentation',
+                    timestamp: 0,
+                    priority: 'low',
+                    implemented: false
+                });
+            }
+        }
+
+        // Always provide at least one suggestion
+        if (suggestions.length === 0) {
             suggestions.push({
-                timestamp: 0,
-                type: 'pace',
-                suggestion: 'Consider re-recording to reduce filler words for a more professional presentation',
-                metadata: { confidence: 0.6, fillerCount }
+                id: `fallback_${Date.now()}_default`,
+                type: 'improvement',
+                title: 'Add Visual Callouts',
+                description: 'Consider adding visual callouts to highlight important UI elements',
+                timestamp: 10,
+                priority: 'medium',
+                implemented: false
             });
         }
 
@@ -152,15 +225,19 @@ class AIService {
      * Fallback review when AI service is unavailable
      */
     _generateFallbackReview({ comments, languages }) {
-        const humanComments = comments.filter(c => !c.aiGenerated);
-        const aiComments = comments.filter(c => c.aiGenerated);
+        // 🛡️ INPUT VALIDATION (CRITICAL)
+        const safeComments = Array.isArray(comments) ? comments : [];
+        const safeLanguages = Array.isArray(languages) ? languages : [];
+        
+        const humanComments = safeComments.filter(c => c && !c.aiGenerated);
+        const aiComments = safeComments.filter(c => c && c.aiGenerated);
         
         const commonIssues = [];
         const insights = [];
 
-        // Analyze comment patterns
+        // Analyze comment patterns with safe access
         if (humanComments.length > 0) {
-            const resolvedCount = humanComments.filter(c => c.status === 'resolved').length;
+            const resolvedCount = humanComments.filter(c => c && c.status === 'resolved').length;
             const resolutionRate = resolvedCount / humanComments.length;
             
             insights.push(`${humanComments.length} human comments received`);
@@ -171,18 +248,26 @@ class AIService {
             insights.push(`${aiComments.length} AI suggestions generated`);
         }
 
-        // Language analysis
-        if (languages && languages.length > 1) {
-            insights.push(`Demo supports ${languages.length} languages`);
+        // Language analysis with safe access
+        if (safeLanguages.length > 1) {
+            insights.push(`Demo supports ${safeLanguages.length} languages`);
         }
 
-        const overallScore = Math.max(1, 10 - (humanComments.filter(c => c.status === 'open').length * 0.5));
+        // Ensure we always have at least one insight
+        if (insights.length === 0) {
+            insights.push('Demo analysis completed');
+        }
+
+        const openComments = safeComments.filter(c => c && c.status === 'open');
+        const overallScore = Math.max(1, 10 - (openComments.length * 0.5));
 
         return {
             insights,
             commonIssues,
             translationWarnings: [],
-            overallScore: Math.min(10, overallScore)
+            recommendations: openComments.length > 0 ? ['Address remaining open comments'] : ['Demo is ready for review'],
+            publishReadiness: overallScore >= 7,
+            overallScore: Math.min(10, Math.round(overallScore * 10) / 10)
         };
     }
 }

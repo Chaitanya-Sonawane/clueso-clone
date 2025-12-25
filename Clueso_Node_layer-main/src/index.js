@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors'); // Import the cors middleware
+const path = require('path');
 
 const { ServerConfig, Logger } = require('./config');
 const { initializeDatabase } = require('./config/database');
@@ -9,9 +10,23 @@ const recordingRoutes = require('./routes/v1/recording-routes');
 const pythonRoutes = require('./routes/v1/python-routes'); // Add python routes
 const authRoutes = require('./routes/v1/auth-routes'); // Add auth routes
 const { FrontendService } = require('./services');
+const { jsonErrorHandler, globalErrorHandler, notFoundHandler } = require('./middleware/error-handler');
 
 const app = express();
 const httpServer = http.createServer(app);
+
+// 🛡️ GLOBAL CRASH PROTECTION (MANDATORY)
+process.on('uncaughtException', (err) => {
+    Logger.error('UNCAUGHT EXCEPTION - Server will continue running:', err);
+    console.error('UNCAUGHT EXCEPTION:', err);
+    // Don't exit - keep server running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    Logger.error('UNHANDLED PROMISE REJECTION - Server will continue running:', reason);
+    console.error('UNHANDLED PROMISE REJECTION at:', promise, 'reason:', reason);
+    // Don't exit - keep server running
+});
 
 // Security headers for production use
 app.use((req, res, next) => {
@@ -63,18 +78,35 @@ app.use(cors({
     exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 
-// Body parsers - MUST come before most routes (except recording routes that handle raw binary data)
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true }));
+// Body parsers with increased limits and error handling
+app.use(express.json({ 
+    limit: "50mb",
+    verify: (req, res, buf) => {
+        try {
+            JSON.parse(buf);
+        } catch (e) {
+            res.status(400).json({
+                success: false,
+                error: 'Invalid JSON',
+                message: 'Request body contains invalid JSON'
+            });
+            return;
+        }
+    }
+}));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// JSON parsing error handler
+app.use(jsonErrorHandler);
 
 // Serve static files from uploads directory (for audio files)
 app.use('/uploads', express.static('uploads'));
 
-// Serve static files from recordings directory (for processed audio from Python)
-app.use('/recordings', express.static('recordings'));
+// Serve static files from recordings directory (for processed files)
+app.use('/recordings', express.static(path.join(__dirname, '..', 'recordings')));
 
-// Serve static files from src/recordings directory (for raw video/audio files)
-app.use('/recordings', express.static('src/recordings'));
+// TEMPORARY: Also serve from old location for existing files
+app.use('/recordings', express.static(path.join(__dirname, 'recordings')));
 
 // Serve processed videos and thumbnails
 app.use('/processed', express.static('processed'));
@@ -92,6 +124,10 @@ app.use('/api/auth', authRoutes);
 const projectRoutes = require('./routes/v1/project-routes');
 app.use('/api/projects', projectRoutes);
 
+// Session management routes (for WebSocket fallback)
+const sessionRoutes = require('./routes/v1/session-routes');
+app.use('/api/session', sessionRoutes);
+
 // Video processing routes
 const videoRoutes = require('./routes/v1/video-routes');
 app.use('/api/videos', videoRoutes);
@@ -100,8 +136,18 @@ app.use('/api/videos', videoRoutes);
 const collaborationRoutes = require('./routes/v1/collaboration-routes');
 app.use('/api/collaboration', collaborationRoutes);
 
+// Test routes (for debugging)
+const testRoutes = require('./routes/v1/test-routes');
+app.use('/api/test', testRoutes);
+
 // All other API routes
 app.use('/api', apiRoutes);
+
+// 404 handler for unmatched routes
+app.use(notFoundHandler);
+
+// Global error handler
+app.use(globalErrorHandler);
 
 httpServer.listen(ServerConfig.PORT, () => {
     console.log(`Successfully started server on PORT ${ServerConfig.PORT}`);

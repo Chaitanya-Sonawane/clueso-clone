@@ -25,6 +25,11 @@ class AuthService {
 
       // Create user
       const userId = uuidv4();
+      
+      // 🛡️ Safe string operations with validation
+      const safeEmail = email && typeof email === 'string' ? email : '';
+      const defaultUsername = safeEmail.includes('@') ? safeEmail.split('@')[0] : 'user';
+      
       const { data: user, error } = await supabaseAdmin
         .from('users')
         .insert({
@@ -32,7 +37,7 @@ class AuthService {
           email,
           password: hashedPassword,
           full_name: fullName,
-          username: username || email.split('@')[0],
+          username: username || defaultUsername,
           avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${fullName}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()

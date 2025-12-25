@@ -41,7 +41,12 @@ async function testCollaborationFeatures() {
         if (commentsResponse.data.success) {
             console.log(`✅ Retrieved ${commentsResponse.data.count} comments`);
             commentsResponse.data.data.forEach((comment, index) => {
-                console.log(`   ${index + 1}. [${comment.timestamp}s] ${comment.username}: ${comment.comment.substring(0, 50)}...`);
+                // 🛡️ Safe substring with validation
+                const commentText = comment.comment && typeof comment.comment === 'string' 
+                    ? comment.comment 
+                    : 'No comment text';
+                const preview = commentText.length > 50 ? `${commentText.substring(0, 50)}...` : commentText;
+                console.log(`   ${index + 1}. [${comment.timestamp}s] ${comment.username}: ${preview}`);
             });
         } else {
             console.log('❌ Failed to retrieve comments');
@@ -58,7 +63,15 @@ async function testCollaborationFeatures() {
         if (aiSuggestionsResponse.data.success) {
             console.log(`✅ Generated ${aiSuggestionsResponse.data.count} AI suggestions`);
             aiSuggestionsResponse.data.data.forEach((suggestion, index) => {
-                console.log(`   ${index + 1}. [${suggestion.timestamp}s] ${suggestion.type.toUpperCase()}: ${suggestion.suggestion.substring(0, 60)}...`);
+                // 🛡️ Safe substring with validation
+                const suggestionText = suggestion.description && typeof suggestion.description === 'string' 
+                    ? suggestion.description 
+                    : suggestion.suggestion && typeof suggestion.suggestion === 'string'
+                    ? suggestion.suggestion
+                    : 'No suggestion text';
+                const preview = suggestionText.length > 60 ? `${suggestionText.substring(0, 60)}...` : suggestionText;
+                const type = suggestion.type && typeof suggestion.type === 'string' ? suggestion.type.toUpperCase() : 'UNKNOWN';
+                console.log(`   ${index + 1}. [${suggestion.timestamp}s] ${type}: ${preview}`);
             });
         } else {
             console.log('❌ Failed to generate AI suggestions');
@@ -84,9 +97,17 @@ async function testCollaborationFeatures() {
         const languagesResponse = await axios.get(`${NODE_SERVER_URL}/api/collaboration/demos/${TEST_DEMO_ID}/languages`);
         
         if (languagesResponse.data.success) {
-            console.log(`✅ Found ${languagesResponse.data.data.length} supported languages`);
-            languagesResponse.data.data.forEach((lang, index) => {
-                console.log(`   ${index + 1}. ${lang.language.toUpperCase()} - Quality: ${lang.translationQuality || 'N/A'}`);
+            const languages = Array.isArray(languagesResponse.data.data) ? languagesResponse.data.data : [];
+            console.log(`✅ Found ${languages.length} supported languages`);
+            languages.forEach((lang, index) => {
+                // 🛡️ Safe property access with validation
+                const langName = lang && lang.language && typeof lang.language === 'string' 
+                    ? lang.language.toUpperCase() 
+                    : 'UNKNOWN';
+                const quality = lang && typeof lang.translationQuality === 'number' 
+                    ? lang.translationQuality 
+                    : 'N/A';
+                console.log(`   ${index + 1}. ${langName} - Quality: ${quality}`);
             });
         } else {
             console.log('❌ Failed to retrieve languages');
@@ -100,10 +121,16 @@ async function testCollaborationFeatures() {
         
         if (reviewResponse.data.success) {
             console.log('✅ AI review generated successfully');
-            console.log(`   Overall score: ${reviewResponse.data.data.overallScore}/10`);
-            console.log(`   Publish readiness: ${reviewResponse.data.data.publishReadiness}`);
-            console.log(`   Insights: ${reviewResponse.data.data.insights.length}`);
-            console.log(`   Recommendations: ${reviewResponse.data.data.recommendations.length}`);
+            const reviewData = reviewResponse.data.data;
+            console.log(`   Overall score: ${reviewData.overallScore}/10`);
+            console.log(`   Publish readiness: ${reviewData.publishReadiness}`);
+            
+            // 🛡️ Safe array access with validation
+            const insights = Array.isArray(reviewData.insights) ? reviewData.insights : [];
+            const recommendations = Array.isArray(reviewData.recommendations) ? reviewData.recommendations : [];
+            
+            console.log(`   Insights: ${insights.length}`);
+            console.log(`   Recommendations: ${recommendations.length}`);
         } else {
             console.log('❌ Failed to generate AI review');
         }
@@ -113,9 +140,13 @@ async function testCollaborationFeatures() {
         
         try {
             const pythonHealthResponse = await axios.get(`${PYTHON_SERVER_URL}/collaboration/health`);
-            if (pythonHealthResponse.data.status === 'healthy') {
+            if (pythonHealthResponse.data && pythonHealthResponse.data.status === 'healthy') {
                 console.log('✅ Python collaboration service is healthy');
-                console.log(`   Supported languages: ${pythonHealthResponse.data.supported_languages.length}`);
+                // 🛡️ Safe array access
+                const supportedLanguages = Array.isArray(pythonHealthResponse.data.supported_languages) 
+                    ? pythonHealthResponse.data.supported_languages 
+                    : [];
+                console.log(`   Supported languages: ${supportedLanguages.length}`);
             }
         } catch (error) {
             console.log('❌ Python collaboration service not available');
@@ -129,6 +160,9 @@ async function testCollaborationFeatures() {
         console.log('   ✅ AI-powered reviews');
         console.log('   ✅ Real-time collaboration ready');
 
+        // Test WebSocket features
+        await testWebSocketFeatures();
+
     } catch (error) {
         console.error('\n❌ Test failed:', error.message);
         if (error.response) {
@@ -141,43 +175,70 @@ async function testCollaborationFeatures() {
 async function testWebSocketFeatures() {
     console.log('\n🔌 Testing WebSocket Features...\n');
     
-    const io = require('socket.io-client');
-    const socket = io(NODE_SERVER_URL);
+    return new Promise((resolve) => {
+        try {
+            const io = require('socket.io-client');
+            const socket = io(NODE_SERVER_URL, {
+                timeout: 5000,
+                forceNew: true
+            });
 
-    socket.on('connect', () => {
-        console.log('✅ WebSocket connected');
-        
-        // Register for demo session
-        socket.emit('register', TEST_DEMO_ID);
+            // 🛡️ WEBSOCKET STABILITY CHECK
+            socket.on('connect', () => {
+                console.log('✅ WebSocket connected');
+                
+                // Register for demo session
+                socket.emit('register', TEST_DEMO_ID);
+            });
+
+            socket.on('registered', (data) => {
+                console.log(`✅ Registered for session: ${data.sessionId}`);
+            });
+
+            socket.on('new_comment', (comment) => {
+                // 🛡️ Safe property access
+                const timestamp = comment && comment.timestamp ? comment.timestamp : 'unknown';
+                const username = comment && comment.username ? comment.username : 'unknown';
+                console.log(`📝 New comment received: [${timestamp}s] ${username}`);
+            });
+
+            socket.on('ai_suggestions', (data) => {
+                // 🛡️ Safe array access
+                const suggestions = Array.isArray(data) ? data : (data && Array.isArray(data.suggestions) ? data.suggestions : []);
+                console.log(`🤖 AI suggestions received: ${suggestions.length} suggestions`);
+            });
+
+            socket.on('comment_resolved', (comment) => {
+                // 🛡️ Safe property access
+                const commentId = comment && comment.id ? comment.id : 'unknown';
+                console.log(`✅ Comment resolved: ${commentId}`);
+            });
+
+            socket.on('error', (error) => {
+                console.log(`❌ WebSocket error: ${error.message || error}`);
+            });
+
+            socket.on('disconnect', (reason) => {
+                console.log(`🔌 WebSocket disconnected: ${reason}`);
+            });
+
+            // Cleanup after 3 seconds
+            setTimeout(() => {
+                socket.disconnect();
+                console.log('🔌 WebSocket test completed');
+                resolve();
+            }, 3000);
+
+        } catch (error) {
+            console.log(`❌ WebSocket test failed: ${error.message}`);
+            resolve();
+        }
     });
-
-    socket.on('registered', (data) => {
-        console.log(`✅ Registered for session: ${data.sessionId}`);
-    });
-
-    socket.on('new_comment', (comment) => {
-        console.log(`📝 New comment received: [${comment.timestamp}s] ${comment.username}`);
-    });
-
-    socket.on('ai_suggestions', (suggestions) => {
-        console.log(`🤖 AI suggestions received: ${suggestions.length} suggestions`);
-    });
-
-    socket.on('comment_resolved', (comment) => {
-        console.log(`✅ Comment resolved: ${comment.id}`);
-    });
-
-    // Cleanup after 5 seconds
-    setTimeout(() => {
-        socket.disconnect();
-        console.log('🔌 WebSocket disconnected');
-    }, 5000);
 }
 
 // Run tests
 if (require.main === module) {
     testCollaborationFeatures()
-        .then(() => testWebSocketFeatures())
         .catch(console.error);
 }
 

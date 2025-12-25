@@ -12,8 +12,8 @@ const sequelize = new Sequelize({
     }
 });
 
-// Import and initialize models
-const collaborationModels = require('../models/collaboration-models')(sequelize);
+// Import models using the standard Sequelize pattern
+const db = require('../models');
 
 // Sync database (create tables if they don't exist)
 const initializeDatabase = async () => {
@@ -22,7 +22,7 @@ const initializeDatabase = async () => {
         console.log('Database connection established successfully.');
         
         // Sync all models with force to avoid conflicts
-        await sequelize.sync({ force: false, alter: false });
+        await sequelize.sync({ force: false, alter: true });
         console.log('Database synchronized successfully.');
         
         return true;
@@ -34,6 +34,6 @@ const initializeDatabase = async () => {
 
 module.exports = {
     sequelize,
-    models: collaborationModels,
+    models: db,
     initializeDatabase
 };

@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 
 // Comment model for timestamped collaboration
-module.exports = (sequelize) => {
+module.exports = (sequelize, DataTypes) => {
     const Comment = sequelize.define('Comment', {
         id: {
             type: DataTypes.UUID,

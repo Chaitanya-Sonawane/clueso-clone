@@ -18,13 +18,21 @@ const fs = require("fs");
  */
 exports.processWithAI = async (text, events = [], metadata = {}, deepgramResponse = null, sessionId = null, audioPath = null) => {
     try {
-        if (!text || text.trim().length === 0) {
-            Logger.warn(`[Python Controller] Text is empty, skipping AI processing`);
+        // 🛡️ INPUT VALIDATION (CRITICAL)
+        if (!text || typeof text !== 'string' || text.trim().length === 0) {
+            Logger.warn(`[Python Controller] Text is empty or invalid, skipping AI processing`);
             return null;
         }
 
+        if (!Array.isArray(events)) {
+            Logger.warn(`[Python Controller] Events is not an array, using empty array`);
+            events = [];
+        }
+
         Logger.info(`[Python Controller] Processing with AI:`);
-        Logger.info(`[Python Controller] - Text: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+        // Safe substring with validation
+        const textPreview = text.length > 100 ? `${text.substring(0, 100)}...` : text;
+        Logger.info(`[Python Controller] - Text: "${textPreview}"`);
         Logger.info(`[Python Controller] - DOM Events: ${events.length}`);
         Logger.info(`[Python Controller] - Has Deepgram Response: ${!!deepgramResponse}`);
         Logger.info(`[Python Controller] - Audio Path: ${audioPath || 'none'}`);
@@ -129,12 +137,24 @@ exports.processChatMessage = async (req, res) => {
     try {
         const { text, sessionId, events = [] } = req.body;
 
-        if (!text) {
-            return res.status(400).json({ error: "Text is required" });
+        // 🛡️ INPUT VALIDATION (CRITICAL)
+        if (!text || typeof text !== 'string') {
+            return res.status(400).json({ 
+                success: false,
+                error: "Invalid or missing text content" 
+            });
         }
 
-        if (!sessionId) {
-            return res.status(400).json({ error: "Session ID is required" });
+        if (!sessionId || typeof sessionId !== 'string') {
+            return res.status(400).json({ 
+                success: false,
+                error: "Invalid or missing session ID" 
+            });
+        }
+
+        if (!Array.isArray(events)) {
+            Logger.warn(`[Python Controller] Events is not an array, using empty array`);
+            events = [];
         }
 
         Logger.info(`[Python Controller] Processing chat message for session: ${sessionId}`);

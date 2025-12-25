@@ -46,27 +46,42 @@ class VideoProcessingService {
       this.processingQueue.set(sessionId, {
         status: 'processing',
         progress: 0,
+        currentStep: 'initializing',
         startTime: new Date(),
         projectId,
         userId
       });
 
+      // Send initial status to frontend
+      const FrontendService = require('./frontend-service');
+      FrontendService.sendProcessingStatus(sessionId, {
+        status: 'processing',
+        currentStep: 'initializing',
+        progress: 0,
+        message: 'Starting video processing...'
+      });
+
       // 1. Validate and prepare files
+      this.updateProcessingStatus(sessionId, 'preparing_files', 10, 'Preparing video files...');
       const processedFiles = await this.prepareFiles(videoPath, audioPath, sessionId);
       
       // 2. Extract video metadata
+      this.updateProcessingStatus(sessionId, 'extracting_metadata', 20, 'Extracting video metadata...');
       const videoMetadata = await this.extractVideoMetadata(processedFiles.videoPath);
       
       // 3. Generate transcription if audio exists
       let transcription = null;
       if (processedFiles.audioPath) {
+        this.updateProcessingStatus(sessionId, 'transcribing', 40, 'Transcribing audio...');
         transcription = await this.generateTranscription(processedFiles.audioPath, sessionId);
       }
 
       // 4. Detect template based on content and metadata
+      this.updateProcessingStatus(sessionId, 'detecting_template', 60, 'Analyzing content...');
       const detectedTemplate = await this.detectTemplate(metadata, transcription);
       
       // 5. Process video with template
+      this.updateProcessingStatus(sessionId, 'applying_template', 70, 'Applying video template...');
       const processedVideo = await this.applyTemplate(
         processedFiles.videoPath,
         processedFiles.audioPath,
@@ -76,12 +91,15 @@ class VideoProcessingService {
       );
 
       // 6. Generate thumbnails and previews
+      this.updateProcessingStatus(sessionId, 'generating_thumbnails', 80, 'Generating thumbnails...');
       const thumbnails = await this.generateThumbnails(processedVideo.path, sessionId);
       
       // 7. Create video chapters/segments
+      this.updateProcessingStatus(sessionId, 'creating_chapters', 90, 'Creating chapters...');
       const chapters = await this.createChapters(transcription, videoMetadata);
 
       // 8. Save processed video and metadata to project
+      this.updateProcessingStatus(sessionId, 'saving_results', 95, 'Saving results...');
       const savedFiles = await this.saveProcessedVideo(
         projectId,
         sessionId,
@@ -98,32 +116,107 @@ class VideoProcessingService {
         userId
       );
 
-      // 9. Update processing status
+      // 9. Mark processing as complete
       this.processingQueue.set(sessionId, {
         status: 'completed',
         progress: 100,
+        currentStep: 'completed',
         result: savedFiles,
         completedAt: new Date()
       });
 
-      Logger.info(`[Video Processing] Completed processing for session: ${sessionId}`);
-      
-      // 10. Notify frontend
-      await this.notifyProcessingComplete(sessionId, savedFiles);
+      // 10. Send completion notification to frontend
+      FrontendService.sendProcessingComplete(sessionId, {
+        status: 'completed',
+        videoPath: savedFiles.videoPath,
+        audioPath: savedFiles.audioPath,
+        transcription: transcription,
+        thumbnails: thumbnails,
+        chapters: chapters,
+        template: detectedTemplate,
+        metadata: savedFiles.metadata
+      });
 
+      Logger.info(`[Video Processing] Processing completed for session: ${sessionId}`);
       return savedFiles;
 
     } catch (error) {
-      Logger.error(`[Video Processing] Error processing video for session ${sessionId}:`, error);
+      Logger.error(`[Video Processing] Processing failed for session: ${sessionId}`, error);
       
+      // Update processing status to failed
       this.processingQueue.set(sessionId, {
         status: 'failed',
         error: error.message,
         failedAt: new Date()
       });
 
+      // Send error notification to frontend
+      const FrontendService = require('./frontend-service');
+      FrontendService.sendProcessingError(sessionId, {
+        status: 'failed',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+
       throw error;
     }
+  }
+
+  /**
+   * Update processing status and notify frontend
+   */
+  updateProcessingStatus(sessionId, currentStep, progress, message) {
+    // Update internal queue
+    const currentStatus = this.processingQueue.get(sessionId);
+    if (currentStatus) {
+      currentStatus.currentStep = currentStep;
+      currentStatus.progress = progress;
+      this.processingQueue.set(sessionId, currentStatus);
+    }
+
+    // Send to frontend
+    const FrontendService = require('./frontend-service');
+    FrontendService.sendProcessingStatus(sessionId, {
+      status: 'processing',
+      currentStep,
+      progress,
+      message
+    });
+
+    Logger.info(`[Video Processing] ${sessionId}: ${currentStep} (${progress}%) - ${message}`);
+  }
+
+  /**
+   * Get current processing status for a session
+   * @param {string} sessionId - Session ID
+   * @returns {object} Processing status
+   */
+  getProcessingStatus(sessionId) {
+    const status = this.processingQueue.get(sessionId);
+    if (!status) {
+      return {
+        status: 'not_found',
+        message: 'Session not found'
+      };
+    }
+
+    return {
+      status: status.status,
+      currentStep: status.currentStep,
+      progress: status.progress,
+      startTime: status.startTime,
+      completedAt: status.completedAt,
+      error: status.error,
+      result: status.result
+    };
+  }
+
+  /**
+   * Clear completed processing status (cleanup)
+   * @param {string} sessionId - Session ID
+   */
+  clearProcessingStatus(sessionId) {
+    this.processingQueue.delete(sessionId);
   }
 
   async prepareFiles(videoPath, audioPath, sessionId) {
@@ -408,7 +501,11 @@ class VideoProcessingService {
   }
 
   generateChapterTitle(text) {
-    // Simple chapter title generation (can be enhanced with AI)
+    // 🛡️ Safe string operations with validation
+    if (!text || typeof text !== 'string') {
+      return 'Chapter';
+    }
+    
     const words = text.split(' ').slice(0, 5);
     return words.join(' ') + (words.length === 5 ? '...' : '');
   }

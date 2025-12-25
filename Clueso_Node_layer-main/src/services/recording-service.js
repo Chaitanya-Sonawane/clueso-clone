@@ -4,7 +4,7 @@ const path = require("path");
 const { Logger } = require("../config");
 
 const uploadDir = path.join(__dirname, "..", "uploads");
-const recordingsDir = path.join(__dirname, "..", "recordings");
+const recordingsDir = path.join(__dirname, "..", "..", "recordings");
 
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir, { recursive: true });

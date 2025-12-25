@@ -13,7 +13,16 @@ export default function RecordingPage() {
         instructions,
         audioData,
         videoData,
-        errors
+        errors,
+        sessionStatus,
+        processingStatus,
+        isLoading,
+        videoLoading,
+        transcriptionLoading,
+        aiProcessingLoading,
+        retryTranscription,
+        retryAIProcessing,
+        isPolling
     } = useWebSocketConnection(sessionId);
 
     return (
@@ -52,6 +61,15 @@ export default function RecordingPage() {
                 instructions={instructions}
                 sessionId={sessionId}
                 connectionState={connectionState}
+                sessionStatus={sessionStatus}
+                processingStatus={processingStatus}
+                isLoading={isLoading}
+                videoLoading={videoLoading}
+                transcriptionLoading={transcriptionLoading}
+                aiProcessingLoading={aiProcessingLoading}
+                retryTranscription={retryTranscription}
+                retryAIProcessing={retryAIProcessing}
+                isPolling={isPolling}
             />
         </>
     );

@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { recordingAPI } from '@/lib/supabase';
+import { useWebSocketConnection } from '@/hooks/useWebSocketConnection';
 import toast from 'react-hot-toast';
 
 interface FileUploadModalProps {
@@ -15,15 +16,24 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // Pre-register WebSocket connection when session is created
+  const { registerSession } = useWebSocketConnection(sessionId);
 
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.type.startsWith('video/')) {
         setVideoFile(file);
+        // Generate session ID when video is selected to pre-register WebSocket
+        if (!sessionId) {
+          const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          setSessionId(newSessionId);
+        }
       } else {
         toast.error('Please select a valid video file');
       }
@@ -42,7 +52,7 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
   };
 
   const handleUpload = async () => {
-    if (!videoFile) {
+    if (!videoFile || !sessionId) {
       toast.error('Please select a video file');
       return;
     }
@@ -51,15 +61,15 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
     setUploadProgress(0);
 
     try {
-      // Generate session ID
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Pre-register session with WebSocket BEFORE upload
+      await registerSession(sessionId);
       
       // Simulate progress
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => Math.min(prev + 10, 90));
       }, 500);
 
-      // Upload files
+      // Upload files with pre-generated session ID
       const response = await recordingAPI.processRecording(
         sessionId,
         [], // No events for uploaded files
@@ -67,7 +77,8 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
         audioFile || videoFile, // Use video file as audio if no audio provided
         {
           uploadedAt: new Date().toISOString(),
-          originalFilename: videoFile.name
+          originalFilename: videoFile.name,
+          sessionId: sessionId // Ensure session ID is included in metadata
         }
       );
 
@@ -77,7 +88,7 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
       if (response.success) {
         toast.success('Files uploaded successfully!');
         
-        // Redirect to recording page
+        // Navigate to recording page immediately - WebSocket is already registered
         setTimeout(() => {
           router.push(`/recording/${sessionId}`);
         }, 500);
@@ -137,10 +148,9 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
               disabled={isUploading}
               className="hidden"
             />
-            <button
-              onClick={() => videoInputRef.current?.click()}
-              disabled={isUploading}
-              className="w-full p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-pink-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            <div
+              onClick={() => !isUploading && videoInputRef.current?.click()}
+              className={`w-full p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-pink-500 transition-colors cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {videoFile ? (
                 <div className="flex items-center justify-between">
@@ -153,17 +163,17 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
                       <p className="text-gray-400 text-sm">{formatFileSize(videoFile.size)}</p>
                     </div>
                   </div>
-                  <button
+                  <div
                     onClick={(e) => {
                       e.stopPropagation();
                       setVideoFile(null);
                     }}
-                    className="text-gray-400 hover:text-red-400 transition-colors"
+                    className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer p-1"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                  </button>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center">
@@ -174,7 +184,7 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
                   <p className="text-gray-500 text-sm">MP4, WebM, or other video formats</p>
                 </div>
               )}
-            </button>
+            </div>
           </div>
 
           {/* Audio Upload (Optional) */}
@@ -190,10 +200,9 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
               disabled={isUploading}
               className="hidden"
             />
-            <button
-              onClick={() => audioInputRef.current?.click()}
-              disabled={isUploading}
-              className="w-full p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            <div
+              onClick={() => !isUploading && audioInputRef.current?.click()}
+              className={`w-full p-4 border-2 border-dashed border-gray-600 rounded-lg hover:border-blue-500 transition-colors cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {audioFile ? (
                 <div className="flex items-center justify-between">
@@ -206,17 +215,17 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
                       <p className="text-gray-400 text-sm">{formatFileSize(audioFile.size)}</p>
                     </div>
                   </div>
-                  <button
+                  <div
                     onClick={(e) => {
                       e.stopPropagation();
                       setAudioFile(null);
                     }}
-                    className="text-gray-400 hover:text-red-400 transition-colors"
+                    className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer p-1"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                  </button>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center">
@@ -227,7 +236,7 @@ export default function FileUploadModal({ onClose }: FileUploadModalProps) {
                   <p className="text-gray-500 text-sm">WAV, MP3, or other audio formats</p>
                 </div>
               )}
-            </button>
+            </div>
           </div>
 
           {/* Upload Progress */}

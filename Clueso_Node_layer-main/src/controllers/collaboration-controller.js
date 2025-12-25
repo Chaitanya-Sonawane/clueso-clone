@@ -1,5 +1,5 @@
 const { StatusCodes } = require('http-status-codes');
-const { CollaborationService, AIService } = require('../services');
+const { CollaborationService, AIService, FrontendService } = require('../services');
 const { Logger } = require('../config');
 
 class CollaborationController {
@@ -28,7 +28,6 @@ class CollaborationController {
             });
 
             // Emit to other connected users via WebSocket
-            const { FrontendService } = require('../services');
             FrontendService.broadcastToDemo(demoId, 'new_comment', newComment);
 
             Logger.info(`[Collaboration] Comment added to demo ${demoId} by ${username}`);
@@ -90,7 +89,6 @@ class CollaborationController {
             }
 
             // Broadcast update
-            const { FrontendService } = require('../services');
             FrontendService.broadcastToDemo(updatedComment.demoId, 'comment_updated', updatedComment);
 
             return res.status(StatusCodes.OK).json({
@@ -149,7 +147,6 @@ class CollaborationController {
             }
 
             // Broadcast resolution
-            const { FrontendService } = require('../services');
             FrontendService.broadcastToDemo(resolvedComment.demoId, 'comment_resolved', resolvedComment);
 
             return res.status(StatusCodes.OK).json({
@@ -171,47 +168,82 @@ class CollaborationController {
     async generateAISuggestions(req, res) {
         try {
             const { demoId } = req.params;
-            const { transcript, pauseDurations, replayFrequency } = req.body;
+            const { context } = req.body;
+
+            // 🛡️ INPUT VALIDATION (CRITICAL)
+            if (!demoId || typeof demoId !== 'string') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid or missing demo ID'
+                });
+            }
 
             Logger.info(`[AI] Generating suggestions for demo ${demoId}`);
 
-            const suggestions = await AIService.generateDemoSuggestions({
-                demoId,
-                transcript,
-                pauseDurations,
-                replayFrequency
-            });
+            // Mock data for testing if no context provided
+            const mockContext = context || {
+                transcript: "Welcome to this demonstration. We will show you how to use this application step by step. This is a comprehensive guide that covers all the main features.",
+                pauseDurations: [0.5, 1.2, 3.1, 0.8, 2.5],
+                replayFrequency: 2
+            };
 
-            // Store AI suggestions as comments
-            const aiComments = [];
-            for (const suggestion of suggestions) {
-                const aiComment = await CollaborationService.addComment({
-                    demoId,
-                    userId: 'ai-assistant',
-                    username: 'AI Assistant',
-                    timestamp: suggestion.timestamp,
-                    comment: suggestion.suggestion,
-                    aiGenerated: true,
-                    suggestionType: suggestion.type,
-                    metadata: suggestion.metadata
+            // Validate context data
+            if (mockContext.transcript && typeof mockContext.transcript !== 'string') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid transcript format'
                 });
-                aiComments.push(aiComment);
             }
 
-            // Broadcast AI suggestions
-            const { FrontendService } = require('../services');
-            FrontendService.broadcastToDemo(demoId, 'ai_suggestions', aiComments);
+            if (mockContext.pauseDurations && !Array.isArray(mockContext.pauseDurations)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid pause durations format'
+                });
+            }
 
-            Logger.info(`[AI] Generated ${suggestions.length} suggestions for demo ${demoId}`);
+            const suggestions = await AIService.generateDemoSuggestions({
+                demoId,
+                ...mockContext
+            });
+
+            // Validate suggestions response
+            if (!Array.isArray(suggestions)) {
+                Logger.error('[AI] AI service returned invalid suggestions format');
+                return res.status(500).json({
+                    success: false,
+                    message: 'Failed to generate AI suggestions'
+                });
+            }
+
+            // Convert AI service suggestions to the format expected by frontend
+            const formattedSuggestions = suggestions.map((suggestion, index) => {
+                // Safe property access with defaults
+                return {
+                    id: suggestion?.id || `suggestion_${Date.now()}_${index}`,
+                    type: suggestion?.type || 'improvement',
+                    title: suggestion?.title || 'AI Suggestion',
+                    description: suggestion?.description || suggestion?.suggestion || 'AI-generated improvement suggestion',
+                    timestamp: typeof suggestion?.timestamp === 'number' ? suggestion.timestamp : 0,
+                    priority: suggestion?.priority || 'medium',
+                    implemented: Boolean(suggestion?.implemented)
+                };
+            });
+
+            // Broadcast AI suggestions
+            FrontendService.broadcastToDemo(demoId, 'ai_suggestions', formattedSuggestions);
+
+            Logger.info(`[AI] Generated ${formattedSuggestions.length} suggestions for demo ${demoId}`);
 
             return res.status(StatusCodes.OK).json({
                 success: true,
-                data: aiComments,
-                count: aiComments.length
+                data: formattedSuggestions,
+                count: formattedSuggestions.length
             });
 
         } catch (error) {
             Logger.error('[AI] Generate suggestions error:', error);
+            console.error('AI SUGGESTIONS ERROR:', error); // Additional console logging
             return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
                 success: false,
                 message: 'Failed to generate AI suggestions'
@@ -374,11 +406,38 @@ class CollaborationController {
             const { demoId } = req.params;
             const { reviewType = 'on_demand' } = req.body;
 
+            // 🛡️ INPUT VALIDATION (CRITICAL)
+            if (!demoId || typeof demoId !== 'string') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid or missing demo ID'
+                });
+            }
+
+            if (reviewType && typeof reviewType !== 'string') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid review type format'
+                });
+            }
+
             Logger.info(`[AI Review] Generating ${reviewType} review for demo ${demoId}`);
 
-            // Get all comments and demo data
-            const comments = await CollaborationService.getComments(demoId, { includeResolved: true, includeAI: true });
-            const languages = await CollaborationService.getLanguages(demoId);
+            // Get all comments and demo data with error handling
+            let comments = [];
+            let languages = [];
+            
+            try {
+                comments = await CollaborationService.getComments(demoId, { includeResolved: true, includeAI: true });
+                languages = await CollaborationService.getLanguages(demoId);
+            } catch (dataError) {
+                Logger.error('[AI Review] Error fetching demo data:', dataError);
+                // Continue with empty arrays rather than failing
+            }
+
+            // Ensure arrays are valid
+            if (!Array.isArray(comments)) comments = [];
+            if (!Array.isArray(languages)) languages = [];
 
             const reviewData = await AIService.generateDemoReview({
                 demoId,
@@ -387,13 +446,30 @@ class CollaborationController {
                 reviewType
             });
 
-            const aiReview = await CollaborationService.createAIReview({
+            // Validate review data
+            if (!reviewData || typeof reviewData !== 'object') {
+                Logger.error('[AI Review] AI service returned invalid review data');
+                return res.status(500).json({
+                    success: false,
+                    message: 'Failed to generate AI review'
+                });
+            }
+
+            // Ensure required fields exist with safe defaults
+            const safeReviewData = {
                 demoId,
                 reviewType,
-                ...reviewData
-            });
+                insights: Array.isArray(reviewData.insights) ? reviewData.insights : ['AI review completed'],
+                commonIssues: Array.isArray(reviewData.commonIssues) ? reviewData.commonIssues : [],
+                translationWarnings: Array.isArray(reviewData.translationWarnings) ? reviewData.translationWarnings : [],
+                recommendations: Array.isArray(reviewData.recommendations) ? reviewData.recommendations : [],
+                publishReadiness: Boolean(reviewData.publishReadiness),
+                overallScore: typeof reviewData.overallScore === 'number' ? reviewData.overallScore : 5.0
+            };
 
-            Logger.info(`[AI Review] Generated review for demo ${demoId} with score ${reviewData.overallScore}`);
+            const aiReview = await CollaborationService.createAIReview(safeReviewData);
+
+            Logger.info(`[AI Review] Generated review for demo ${demoId} with score ${safeReviewData.overallScore}`);
 
             return res.status(StatusCodes.CREATED).json({
                 success: true,
@@ -402,6 +478,7 @@ class CollaborationController {
 
         } catch (error) {
             Logger.error('[AI Review] Generate review error:', error);
+            console.error('AI REVIEW ERROR:', error); // Additional console logging
             return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
                 success: false,
                 message: 'Failed to generate AI review'

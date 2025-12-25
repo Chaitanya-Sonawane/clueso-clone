@@ -25,11 +25,31 @@ class FrontendService {
         this.io.on("connection", (socket) => {
             Logger.info(`[Frontend Service] Client connected: ${socket.id}`);
 
-            // Handle session registration
-            socket.on("register", (sessionId) => {
-                if (!sessionId) {
-                    Logger.warn(`[Frontend Service] Client ${socket.id} tried to register without sessionId`);
-                    socket.emit("error", { message: "Session ID is required" });
+            // 🛡️ WEBSOCKET MESSAGE SAFETY
+            socket.on("register", (data) => {
+                let sessionId; // Declare sessionId at the function scope
+                
+                try {
+                    // Handle both string and object data safely
+                    if (typeof data === 'string') {
+                        sessionId = data;
+                    } else if (data && typeof data === 'object' && data.sessionId) {
+                        sessionId = data.sessionId;
+                    } else {
+                        Logger.warn(`[Frontend Service] Client ${socket.id} sent invalid registration data`);
+                        socket.emit("error", { message: "Invalid session data format" });
+                        return;
+                    }
+
+                    if (!sessionId || typeof sessionId !== 'string') {
+                        Logger.warn(`[Frontend Service] Client ${socket.id} tried to register without valid sessionId`);
+                        socket.emit("error", { message: "Session ID is required" });
+                        return;
+                    }
+
+                } catch (error) {
+                    Logger.warn(`[Frontend Service] Client ${socket.id} sent invalid registration data:`, error);
+                    socket.emit("error", { message: "Invalid session data format" });
                     return;
                 }
 
@@ -50,30 +70,178 @@ class FrontendService {
                 // Flush queued messages
                 this._flushQueue(sessionId, socket);
 
-                // Auto-send demo data for test session
-                const DEMO_SESSION_ID = 'session_1765089986708_lyv7icnrb';
-                if (sessionId === DEMO_SESSION_ID) {
-                    Logger.info(`[Frontend Service] Demo session detected, auto-sending demo data...`);
+                // DISABLED: Don't automatically send existing files - only show uploaded videos
+                // this._sendExistingFiles(sessionId, socket);
 
-                    // Trigger demo data send after a short delay to ensure client is ready
-                    setTimeout(() => {
-                        this._sendDemoData(sessionId);
-                    }, 500);
+                // DISABLED: Don't auto-send demo data - only show uploaded videos
+                // Auto-send demo data for test session
+                // const DEMO_SESSION_ID = 'session_1765089986708_lyv7icnrb';
+                // if (sessionId === DEMO_SESSION_ID) {
+                //     Logger.info(`[Frontend Service] Demo session detected, auto-sending demo data...`);
+                //     // Trigger demo data send after a short delay to ensure client is ready
+                //     setTimeout(() => {
+                //         this._sendDemoData(sessionId);
+                //     }, 500);
+                // }
+            });
+
+            // Handle disconnect with error protection
+            socket.on("disconnect", (reason) => {
+                try {
+                    if (socket.sessionId) {
+                        this.sessions.delete(socket.sessionId);
+                        Logger.info(`[Frontend Service] Client disconnected (${reason}) and removed from session: ${socket.sessionId}`);
+                    } else {
+                        Logger.info(`[Frontend Service] Unregistered client disconnected (${reason}): ${socket.id}`);
+                    }
+                } catch (error) {
+                    Logger.error(`[Frontend Service] Error handling disconnect:`, error);
                 }
             });
 
-            // Handle disconnect
-            socket.on("disconnect", () => {
-                if (socket.sessionId) {
-                    this.sessions.delete(socket.sessionId);
-                    Logger.info(`[Frontend Service] Client disconnected and removed from session: ${socket.sessionId}`);
-                } else {
-                    Logger.info(`[Frontend Service] Unregistered client disconnected: ${socket.id}`);
-                }
+            // Handle errors
+            socket.on("error", (error) => {
+                Logger.error(`[Frontend Service] Socket error for ${socket.id}:`, error);
             });
         });
 
         Logger.info("[Frontend Service] Socket.IO server initialized");
+    }
+
+    /**
+     * Send processing status updates to frontend
+     * @param {string} sessionId - Session ID
+     * @param {object} status - Processing status data
+     */
+    sendProcessingStatus(sessionId, status) {
+        try {
+            if (!sessionId || typeof sessionId !== 'string') {
+                Logger.error(`[Frontend Service] Invalid sessionId provided to sendProcessingStatus`);
+                return false;
+            }
+
+            if (!status || typeof status !== 'object') {
+                Logger.error(`[Frontend Service] Invalid status provided to sendProcessingStatus`);
+                return false;
+            }
+
+            const socket = this.sessions.get(sessionId);
+
+            if (!socket) {
+                Logger.warn(`[Frontend Service] No client connected for session: ${sessionId}. Buffering processing status.`);
+                this._queueMessage(sessionId, "processing_status", status);
+                return true;
+            }
+
+            Logger.info(`[Frontend Service] Sending processing status to session: ${sessionId} - ${status.currentStep} (${status.progress}%)`);
+            socket.emit("processing_status", status);
+            return true;
+        } catch (error) {
+            Logger.error(`[Frontend Service] Error sending processing status:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Send processing completion notification to frontend
+     * @param {string} sessionId - Session ID
+     * @param {object} result - Processing result data
+     */
+    sendProcessingComplete(sessionId, result) {
+        try {
+            if (!sessionId || typeof sessionId !== 'string') {
+                Logger.error(`[Frontend Service] Invalid sessionId provided to sendProcessingComplete`);
+                return false;
+            }
+
+            if (!result || typeof result !== 'object') {
+                Logger.error(`[Frontend Service] Invalid result provided to sendProcessingComplete`);
+                return false;
+            }
+
+            const socket = this.sessions.get(sessionId);
+
+            if (!socket) {
+                Logger.warn(`[Frontend Service] No client connected for session: ${sessionId}. Buffering processing complete.`);
+                this._queueMessage(sessionId, "processing_complete", result);
+                return true;
+            }
+
+            Logger.info(`[Frontend Service] Sending processing complete to session: ${sessionId}`);
+            socket.emit("processing_complete", result);
+            return true;
+        } catch (error) {
+            Logger.error(`[Frontend Service] Error sending processing complete:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Send processing error notification to frontend
+     * @param {string} sessionId - Session ID
+     * @param {object} error - Error data
+     */
+    sendProcessingError(sessionId, error) {
+        try {
+            if (!sessionId || typeof sessionId !== 'string') {
+                Logger.error(`[Frontend Service] Invalid sessionId provided to sendProcessingError`);
+                return false;
+            }
+
+            if (!error || typeof error !== 'object') {
+                Logger.error(`[Frontend Service] Invalid error provided to sendProcessingError`);
+                return false;
+            }
+
+            const socket = this.sessions.get(sessionId);
+
+            if (!socket) {
+                Logger.warn(`[Frontend Service] No client connected for session: ${sessionId}. Buffering processing error.`);
+                this._queueMessage(sessionId, "processing_error", error);
+                return true;
+            }
+
+            Logger.info(`[Frontend Service] Sending processing error to session: ${sessionId}`);
+            socket.emit("processing_error", error);
+            return true;
+        } catch (error) {
+            Logger.error(`[Frontend Service] Error sending processing error:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Send video data to frontend client
+     * @param {string} sessionId - Session ID
+     * @param {object} videoData - Video data (filename, path, metadata, etc.)
+     */
+    sendVideo(sessionId, videoData) {
+        try {
+            if (!sessionId || typeof sessionId !== 'string') {
+                Logger.error(`[Frontend Service] Invalid sessionId provided to sendVideo`);
+                return false;
+            }
+
+            if (!videoData || typeof videoData !== 'object') {
+                Logger.error(`[Frontend Service] Invalid videoData provided to sendVideo`);
+                return false;
+            }
+
+            const socket = this.sessions.get(sessionId);
+
+            if (!socket) {
+                Logger.warn(`[Frontend Service] No client connected for session: ${sessionId}. Buffering video data.`);
+                this._queueMessage(sessionId, "video", videoData);
+                return true;
+            }
+
+            Logger.info(`[Frontend Service] Sending video data to session: ${sessionId} - ${videoData.filename}`);
+            socket.emit("video", videoData);
+            return true;
+        } catch (error) {
+            Logger.error(`[Frontend Service] Error sending video data:`, error);
+            return false;
+        }
     }
 
     /**
@@ -83,24 +251,40 @@ class FrontendService {
      * @param {string} source - Source of instructions: 'python' or 'dom' (default: 'python')
      */
     sendInstructions(sessionId, instructions, source = 'python') {
-        const socket = this.sessions.get(sessionId);
+        try {
+            // 🛡️ INPUT VALIDATION (CRITICAL)
+            if (!sessionId || typeof sessionId !== 'string') {
+                Logger.error(`[Frontend Service] Invalid sessionId provided to sendInstructions`);
+                return false;
+            }
 
-        if (!socket) {
-            Logger.warn(`[Frontend Service] No client connected for session: ${sessionId}. Buffering instructions.`);
-            this._queueMessage(sessionId, "instructions", instructions);
-            return true; // Return true because we buffered it
+            if (!instructions || typeof instructions !== 'object') {
+                Logger.error(`[Frontend Service] Invalid instructions provided to sendInstructions`);
+                return false;
+            }
+
+            const socket = this.sessions.get(sessionId);
+
+            if (!socket) {
+                Logger.warn(`[Frontend Service] No client connected for session: ${sessionId}. Buffering instructions.`);
+                this._queueMessage(sessionId, "instructions", instructions);
+                return true; // Return true because we buffered it
+            }
+
+            // Track if Python instructions were received
+            if (source === 'python') {
+                this.pythonInstructionsReceived.set(sessionId, true);
+                Logger.info(`[Frontend Service] Sending Python-processed instructions to session: ${sessionId}`);
+            } else {
+                Logger.info(`[Frontend Service] Sending DOM event as instruction to session: ${sessionId} (fallback)`);
+            }
+
+            socket.emit("instructions", instructions);
+            return true;
+        } catch (error) {
+            Logger.error(`[Frontend Service] Error sending instructions:`, error);
+            return false;
         }
-
-        // Track if Python instructions were received
-        if (source === 'python') {
-            this.pythonInstructionsReceived.set(sessionId, true);
-            Logger.info(`[Frontend Service] Sending Python-processed instructions to session: ${sessionId}`);
-        } else {
-            Logger.info(`[Frontend Service] Sending DOM event as instruction to session: ${sessionId} (fallback)`);
-        }
-
-        socket.emit("instructions", instructions);
-        return true;
     }
 
     /**
@@ -381,6 +565,123 @@ class FrontendService {
         });
 
         return true;
+    }
+
+    /**
+     * Check for existing video/audio files and send them to newly connected client
+     * @param {string} sessionId - Session ID
+     * @param {object} socket - Socket instance
+     */
+    _sendExistingFiles(sessionId, socket) {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+
+            // Check both old and new recording directories
+            const recordingsDirs = [
+                path.join(__dirname, '../../recordings'), // New location
+                path.join(__dirname, '../recordings')     // Old location (src/recordings)
+            ];
+
+            let videoPath = null;
+            let audioPath = null;
+            let eventsPath = null;
+
+            // Look for files in both directories
+            for (const dir of recordingsDirs) {
+                const videoFile = path.join(dir, `recording_${sessionId}_video.webm`);
+                const audioFile = path.join(dir, `recording_${sessionId}_audio.webm`);
+
+                if (fs.existsSync(videoFile)) {
+                    videoPath = videoFile;
+                    Logger.info(`[Frontend Service] Found existing video: ${videoFile}`);
+                }
+                if (fs.existsSync(audioFile)) {
+                    audioPath = audioFile;
+                    Logger.info(`[Frontend Service] Found existing audio: ${audioFile}`);
+                }
+
+                // Find events file with glob pattern
+                try {
+                    const files = fs.readdirSync(dir);
+                    const eventFile = files.find(f => f.startsWith(`recording_${sessionId}_`) && f.endsWith('.json'));
+                    if (eventFile) {
+                        eventsPath = path.join(dir, eventFile);
+                        Logger.info(`[Frontend Service] Found existing events: ${eventsPath}`);
+                    }
+                } catch (err) {
+                    // Directory doesn't exist, continue
+                }
+            }
+
+            // Send video if found
+            if (videoPath) {
+                const videoFilename = path.basename(videoPath);
+                const videoData = {
+                    filename: videoFilename,
+                    path: `/recordings/${videoFilename}`,
+                    metadata: { sessionId },
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Send directly to this socket
+                socket.emit('video', videoData);
+                Logger.info(`[Frontend Service] Sent existing video to client: ${videoFilename}`);
+            }
+
+            // Send audio if found
+            if (audioPath) {
+                const audioFilename = path.basename(audioPath);
+                
+                // Try to load transcript from events file
+                let transcriptText = '';
+                if (eventsPath && fs.existsSync(eventsPath)) {
+                    try {
+                        const eventsData = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+                        transcriptText = eventsData.transcription?.text || '';
+                    } catch (err) {
+                        Logger.warn(`[Frontend Service] Could not load transcript from events file: ${err.message}`);
+                    }
+                }
+
+                const audioData = {
+                    filename: audioFilename,
+                    path: `/recordings/${audioFilename}`,
+                    text: transcriptText,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Send directly to this socket
+                socket.emit('audio', audioData);
+                Logger.info(`[Frontend Service] Sent existing audio to client: ${audioFilename}`);
+            }
+
+            // Send instructions if found
+            if (eventsPath && fs.existsSync(eventsPath)) {
+                try {
+                    const eventsData = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+                    const events = eventsData.events || [];
+                    
+                    if (events.length > 0) {
+                        // Send events as instructions
+                        events.forEach((event) => {
+                            socket.emit('instructions', event);
+                        });
+                        Logger.info(`[Frontend Service] Sent ${events.length} existing instructions to client`);
+                    }
+                } catch (err) {
+                    Logger.warn(`[Frontend Service] Could not load events from file: ${err.message}`);
+                }
+            }
+
+            // If no files found, log it
+            if (!videoPath && !audioPath) {
+                Logger.info(`[Frontend Service] No existing files found for session: ${sessionId}`);
+            }
+
+        } catch (err) {
+            Logger.error(`[Frontend Service] Error sending existing files for session ${sessionId}:`, err);
+        }
     }
 
     /**

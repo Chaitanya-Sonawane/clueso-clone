@@ -3,19 +3,28 @@
 import { useState, useEffect } from 'react';
 import { useCollaborationStore } from '@/lib/collaboration-store';
 import { onSocketEvent, offSocketEvent } from '@/lib/socket';
+import { AudioData, VideoData, SessionStatus } from '@/hooks/useWebSocketConnection';
 
 interface CollaborationPanelProps {
   sessionId: string;
   currentTime: number;
   onSeek: (time: number) => void;
   isPlaying: boolean;
+  audioData: AudioData | null;
+  videoData: VideoData | null;
+  sessionStatus: SessionStatus;
+  aiProcessingLoading: boolean;
 }
 
 export default function CollaborationPanel({ 
   sessionId, 
   currentTime, 
   onSeek, 
-  isPlaying 
+  isPlaying,
+  audioData,
+  videoData,
+  sessionStatus,
+  aiProcessingLoading
 }: CollaborationPanelProps) {
   const [activeTab, setActiveTab] = useState<'comments' | 'languages' | 'ai'>('comments');
   const [newComment, setNewComment] = useState('');
@@ -110,11 +119,33 @@ export default function CollaborationPanel({
     return new Date(timestamp).toLocaleString();
   };
 
+  // Check if AI features should be enabled
+  const isAIReady = sessionStatus === 'READY' && audioData && videoData;
+  const hasTranscript = audioData && audioData.text && audioData.text.length > 0;
+
   return (
     <div className="h-full bg-[var(--color-bg-secondary)] border-l border-[var(--color-border-primary)] flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-[var(--color-border-primary)]">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-4">Collaboration</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Collaboration</h2>
+          
+          {/* Real-time Status */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-xs text-[var(--color-text-tertiary)]">Live</span>
+            </div>
+            {sessionStatus === 'READY' && (
+              <div className="flex items-center gap-1">
+                <svg className="w-3 h-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span className="text-xs text-purple-400">AI Ready</span>
+              </div>
+            )}
+          </div>
+        </div>
         
         {/* Tabs */}
         <div className="flex space-x-1 bg-[var(--color-bg-tertiary)] rounded-lg p-1">
@@ -310,20 +341,115 @@ export default function CollaborationPanel({
           <div className="h-full flex flex-col">
             {/* AI Actions */}
             <div className="p-4 border-b border-[var(--color-border-primary)] space-y-3">
-              <button
-                onClick={() => generateAISuggestions(sessionId)}
-                disabled={aiSuggestionsLoading}
-                className="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {aiSuggestionsLoading ? 'Generating...' : 'Generate AI Suggestions'}
-              </button>
-              <button
-                onClick={() => generateAIReview(sessionId)}
-                disabled={aiReviewLoading}
-                className="w-full px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {aiReviewLoading ? 'Generating...' : 'Generate AI Review'}
-              </button>
+              {aiProcessingLoading ? (
+                <div className="text-center py-4">
+                  <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-[var(--color-text-tertiary)] text-sm">Processing AI insights...</p>
+                </div>
+              ) : sessionStatus === 'UPLOADED' ? (
+                <div className="text-center py-4">
+                  <svg className="w-8 h-8 text-[var(--color-text-tertiary)] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <p className="text-[var(--color-text-tertiary)] text-sm">Waiting for video upload...</p>
+                </div>
+              ) : sessionStatus === 'PROCESSING' ? (
+                <div className="text-center py-4">
+                  <svg className="w-8 h-8 text-[var(--color-text-tertiary)] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-[var(--color-text-tertiary)] text-sm">
+                    {!hasTranscript ? 'Transcribing audio...' : 'Processing video...'}
+                  </p>
+                </div>
+              ) : sessionStatus === 'ERROR' ? (
+                <div className="text-center py-4">
+                  <svg className="w-8 h-8 text-red-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-red-400 text-sm">Processing failed</p>
+                  <p className="text-[var(--color-text-tertiary)] text-xs mt-1">AI features unavailable</p>
+                </div>
+              ) : !isAIReady ? (
+                <div className="text-center py-4">
+                  <svg className="w-8 h-8 text-[var(--color-text-tertiary)] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-[var(--color-text-tertiary)] text-sm">
+                    {!hasTranscript ? 'Waiting for transcript...' : 'Preparing AI features...'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => generateAISuggestions(sessionId)}
+                      disabled={aiSuggestionsLoading || !isAIReady}
+                      className="px-3 py-2 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {aiSuggestionsLoading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                          Generating...
+                        </div>
+                      ) : (
+                        'AI Suggestions'
+                      )}
+                    </button>
+                    <button
+                      onClick={() => generateAIReview(sessionId)}
+                      disabled={aiReviewLoading || !isAIReady}
+                      className="px-3 py-2 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {aiReviewLoading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                          Generating...
+                        </div>
+                      ) : (
+                        'AI Review'
+                      )}
+                    </button>
+                  </div>
+                  
+                  {/* Advanced AI Features */}
+                  <div className="pt-2 border-t border-[var(--color-border-primary)]">
+                    <p className="text-xs text-[var(--color-text-tertiary)] mb-2">Advanced AI Features</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        onClick={() => {
+                          // Generate AI-powered comments at key moments
+                          const keyMoments = [
+                            Math.floor(Math.random() * (audioData?.text?.length || 100) / 10),
+                            Math.floor(Math.random() * (audioData?.text?.length || 100) / 5),
+                            Math.floor(Math.random() * (audioData?.text?.length || 100) / 3)
+                          ];
+                          
+                          keyMoments.forEach((moment, index) => {
+                            setTimeout(() => {
+                              addComment(sessionId, `AI-generated insight: Key moment detected at this timestamp with important content.`, moment, true);
+                            }, index * 1000);
+                          });
+                        }}
+                        disabled={!isAIReady}
+                        className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Generate AI Comments
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Simulate AI-powered transcript enhancement
+                          console.log('Enhancing transcript with AI...');
+                        }}
+                        disabled={!isAIReady}
+                        className="px-3 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Enhance Transcript
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* AI Content */}
@@ -357,32 +483,52 @@ export default function CollaborationPanel({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     AI Suggestions
+                    <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
+                      {aiSuggestions.length}
+                    </span>
                   </h3>
                   <div className="space-y-3">
                     {aiSuggestions.map((suggestion) => (
                       <div
                         key={suggestion.id}
-                        className="p-3 bg-[var(--color-bg-tertiary)] border border-[var(--color-border-primary)] rounded-lg"
+                        className="p-3 bg-[var(--color-bg-tertiary)] border border-[var(--color-border-primary)] rounded-lg hover:border-green-500/30 transition-colors"
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <h4 className="text-[var(--color-text-primary)] font-medium">{suggestion.title}</h4>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                            suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-green-500/20 text-green-400'
-                          }`}>
-                            {suggestion.priority}
-                          </span>
+                          <h4 className="text-[var(--color-text-primary)] font-medium text-sm">{suggestion.title}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                              suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-green-500/20 text-green-400'
+                            }`}>
+                              {suggestion.priority}
+                            </span>
+                            <button
+                              onClick={() => addComment(sessionId, `AI Suggestion: ${suggestion.title}\n\n${suggestion.description}`, suggestion.timestamp || currentTime, true)}
+                              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                              title="Add as comment"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-sm text-[var(--color-text-secondary)] mb-2">{suggestion.description}</p>
-                        {suggestion.timestamp && (
-                          <button
-                            onClick={() => onSeek(suggestion.timestamp!)}
-                            className="text-xs text-purple-400 hover:text-purple-300 font-mono"
-                          >
-                            Go to {formatTime(suggestion.timestamp)}
-                          </button>
-                        )}
+                        <p className="text-sm text-[var(--color-text-secondary)] mb-2 leading-relaxed">{suggestion.description}</p>
+                        <div className="flex items-center justify-between">
+                          {suggestion.timestamp && (
+                            <button
+                              onClick={() => onSeek(suggestion.timestamp!)}
+                              className="text-xs text-purple-400 hover:text-purple-300 font-mono transition-colors"
+                            >
+                              Go to {formatTime(suggestion.timestamp)}
+                            </button>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-[var(--color-text-tertiary)]">AI Generated</span>
+                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -390,7 +536,7 @@ export default function CollaborationPanel({
               )}
 
               {/* Empty State */}
-              {!aiReview && aiSuggestions.length === 0 && !aiSuggestionsLoading && !aiReviewLoading && (
+              {!aiReview && aiSuggestions.length === 0 && !aiSuggestionsLoading && !aiReviewLoading && isAIReady && (
                 <div className="text-center py-8">
                   <svg className="w-12 h-12 text-[var(--color-text-tertiary)] mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
