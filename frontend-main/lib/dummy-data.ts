@@ -145,4 +145,9 @@ export const dummyProjects: Project[] = [
   {
     id: 'project_ai_assistant_001',
     name: 'Feature Showcase - AI Assistant',
-    description: 'Showcasing the new AI assi
+    description: 'Showcasing the new AI assistant features and capabilities.',
+    ownerId: 'user_john_doe',
+    createdAt: '2024-12-22T09:00:00Z',
+    updatedAt: '2024-12-22T09:00:00Z'
+  }
+];

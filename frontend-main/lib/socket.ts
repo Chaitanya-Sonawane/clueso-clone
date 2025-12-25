@@ -116,8 +116,8 @@ export const registerSession = (sessionId: string): void => {
             socket.emit('register', sessionId);
         });
         
-        // Connect if not already connecting
-        if (!socket.connecting) {
+        // Connect if not already connected
+        if (!socket.connected) {
             socket.connect();
         }
     }

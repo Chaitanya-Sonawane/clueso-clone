@@ -44,7 +44,7 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
       throw new Error('Unable to connect to server. Please check if the backend is running.');
     }
     
-    if (error.message.includes('JSON')) {
+    if (error instanceof Error && error.message.includes('JSON')) {
       throw new Error('Server returned invalid response. Please try again.');
     }
     

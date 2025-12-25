@@ -85,10 +85,6 @@ export default function ScreenRecorderInstallModal({
       duration: 3000,
     });
     onSkip();
-  };
-
-  const handleSkipClick = () => {
-    onSkip();
     onClose();
   };
 
@@ -169,3 +165,29 @@ export default function ScreenRecorderInstallModal({
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transform hover:scale-[1.02] transition-all shadow-lg hover:shadow-xl"
               >
                 Proceed 
+Install Extension
+              </button>
+
+              <button
+                onClick={handleSkipClick}
+                className="w-full bg-gray-100 text-gray-700 font-medium py-3 px-6 rounded-lg hover:bg-gray-200 transition-all"
+              >
+                Skip for now
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
