@@ -28,7 +28,24 @@ class AuthService {
       
       // 🛡️ Safe string operations with validation
       const safeEmail = email && typeof email === 'string' ? email : '';
-      const defaultUsername = safeEmail.includes('@') ? safeEmail.split('@')[0] : 'user';
+      const baseUsername = safeEmail.includes('@') ? safeEmail.split('@')[0] : 'user';
+      
+      // Generate unique username by adding timestamp or checking for duplicates
+      let uniqueUsername = username || baseUsername;
+      
+      if (!username) {
+        // Check if base username exists
+        const { data: existingUsername } = await supabaseAdmin
+          .from('users')
+          .select('username')
+          .eq('username', baseUsername)
+          .single();
+        
+        if (existingUsername) {
+          // If exists, add timestamp to make it unique
+          uniqueUsername = `${baseUsername}_${Date.now()}`;
+        }
+      }
       
       const { data: user, error } = await supabaseAdmin
         .from('users')
@@ -37,7 +54,7 @@ class AuthService {
           email,
           password: hashedPassword,
           full_name: fullName,
-          username: username || defaultUsername,
+          username: uniqueUsername,
           avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${fullName}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()

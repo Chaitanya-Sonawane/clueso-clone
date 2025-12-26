@@ -1,5 +1,6 @@
 const { Server } = require("socket.io");
 const { Logger } = require("../config");
+const PlaybackSyncService = require('./playback-sync-service');
 
 class FrontendService {
     constructor() {
@@ -8,6 +9,7 @@ class FrontendService {
         this.messageQueue = new Map(); // sessionId -> [messages]
         this.sessionDomEvents = new Map(); // sessionId -> DOM events array (for fallback)
         this.pythonInstructionsReceived = new Map(); // sessionId -> boolean (track if Python sent instructions)
+        this.userSockets = new Map(); // userId -> Set of socketIds
     }
 
     /**
@@ -69,25 +71,149 @@ class FrontendService {
 
                 // Flush queued messages
                 this._flushQueue(sessionId, socket);
+            });
 
-                // DISABLED: Don't automatically send existing files - only show uploaded videos
-                // this._sendExistingFiles(sessionId, socket);
+            // ===== COLLABORATION & PLAYBACK SYNC EVENTS =====
 
-                // DISABLED: Don't auto-send demo data - only show uploaded videos
-                // Auto-send demo data for test session
-                // const DEMO_SESSION_ID = 'session_1765089986708_lyv7icnrb';
-                // if (sessionId === DEMO_SESSION_ID) {
-                //     Logger.info(`[Frontend Service] Demo session detected, auto-sending demo data...`);
-                //     // Trigger demo data send after a short delay to ensure client is ready
-                //     setTimeout(() => {
-                //         this._sendDemoData(sessionId);
-                //     }, 500);
-                // }
+            // User authentication for collaboration
+            socket.on("authenticate", (data) => {
+                try {
+                    const { userId, username, token } = data;
+                    
+                    // TODO: Validate JWT token here
+                    
+                    socket.userId = userId;
+                    socket.username = username;
+                    
+                    // Track user sockets
+                    if (!this.userSockets.has(userId)) {
+                        this.userSockets.set(userId, new Set());
+                    }
+                    this.userSockets.get(userId).add(socket.id);
+                    
+                    socket.emit("authenticated", { userId, username });
+                    Logger.info(`[Frontend Service] User ${username} authenticated on socket ${socket.id}`);
+                } catch (error) {
+                    Logger.error(`[Frontend Service] Authentication error:`, error);
+                    socket.emit("auth_error", { message: "Authentication failed" });
+                }
+            });
+
+            // Join video collaboration session
+            socket.on("join_video", (data) => {
+                try {
+                    const { videoId, videoMetadata } = data;
+                    
+                    if (!socket.userId) {
+                        socket.emit("error", { message: "Authentication required" });
+                        return;
+                    }
+                    
+                    // Initialize video in playback sync service
+                    PlaybackSyncService.initializeVideo(videoId, videoMetadata);
+                    
+                    // Join user to video session
+                    const playbackState = PlaybackSyncService.joinVideoSession(
+                        videoId, 
+                        socket.id, 
+                        { userId: socket.userId, username: socket.username },
+                        this.io
+                    );
+                    
+                    socket.videoId = videoId;
+                    
+                    Logger.info(`[Frontend Service] User ${socket.username} joined video ${videoId}`);
+                } catch (error) {
+                    Logger.error(`[Frontend Service] Join video error:`, error);
+                    socket.emit("error", { message: "Failed to join video session" });
+                }
+            });
+
+            // Playback control events
+            socket.on("playback_control", (data) => {
+                try {
+                    const { action, currentTime, playbackRate } = data;
+                    
+                    const success = PlaybackSyncService.handlePlaybackControl(
+                        socket.id,
+                        action,
+                        { currentTime, playbackRate },
+                        this.io
+                    );
+                    
+                    if (!success) {
+                        socket.emit("control_failed", { 
+                            action, 
+                            message: "Playback control failed" 
+                        });
+                    }
+                } catch (error) {
+                    Logger.error(`[Frontend Service] Playback control error:`, error);
+                    socket.emit("error", { message: "Playback control failed" });
+                }
+            });
+
+            // Request playback state
+            socket.on("get_playback_state", (data) => {
+                try {
+                    const { videoId } = data;
+                    const state = PlaybackSyncService.getPublicPlaybackState(videoId);
+                    
+                    if (state) {
+                        socket.emit("playback_state", state);
+                    } else {
+                        socket.emit("error", { message: "Video session not found" });
+                    }
+                } catch (error) {
+                    Logger.error(`[Frontend Service] Get playback state error:`, error);
+                }
+            });
+
+            // Grant playback control to another user
+            socket.on("grant_control", (data) => {
+                try {
+                    const { videoId, userId } = data;
+                    
+                    if (!socket.userId || !socket.videoId) {
+                        socket.emit("error", { message: "Not in video session" });
+                        return;
+                    }
+                    
+                    const success = PlaybackSyncService.grantControl(videoId, userId, socket.userId);
+                    
+                    if (success) {
+                        // Notify the user who received control
+                        this.sendToUser(userId, "control_granted", {
+                            videoId,
+                            grantedBy: { userId: socket.userId, username: socket.username }
+                        });
+                        
+                        socket.emit("control_granted_success", { userId });
+                    } else {
+                        socket.emit("control_grant_failed", { message: "Failed to grant control" });
+                    }
+                } catch (error) {
+                    Logger.error(`[Frontend Service] Grant control error:`, error);
+                }
             });
 
             // Handle disconnect with error protection
             socket.on("disconnect", (reason) => {
                 try {
+                    // Remove from video session
+                    if (socket.videoId) {
+                        PlaybackSyncService.leaveVideoSession(socket.id, this.io);
+                    }
+                    
+                    // Remove from user tracking
+                    if (socket.userId && this.userSockets.has(socket.userId)) {
+                        this.userSockets.get(socket.userId).delete(socket.id);
+                        if (this.userSockets.get(socket.userId).size === 0) {
+                            this.userSockets.delete(socket.userId);
+                        }
+                    }
+                    
+                    // Remove from session tracking
                     if (socket.sessionId) {
                         this.sessions.delete(socket.sessionId);
                         Logger.info(`[Frontend Service] Client disconnected (${reason}) and removed from session: ${socket.sessionId}`);
@@ -105,7 +231,53 @@ class FrontendService {
             });
         });
 
-        Logger.info("[Frontend Service] Socket.IO server initialized");
+        Logger.info("[Frontend Service] Socket.IO server initialized with playback sync");
+    }
+
+    /**
+     * Send message to specific user (all their sockets)
+     * @param {string} userId - User ID
+     * @param {string} event - Event name
+     * @param {object} data - Event data
+     */
+    sendToUser(userId, event, data) {
+        try {
+            const userSocketIds = this.userSockets.get(userId);
+            if (!userSocketIds) {
+                Logger.warn(`[Frontend Service] No sockets found for user ${userId}`);
+                return false;
+            }
+            
+            let sent = 0;
+            userSocketIds.forEach(socketId => {
+                const socket = this.io.sockets.sockets.get(socketId);
+                if (socket) {
+                    socket.emit(event, data);
+                    sent++;
+                }
+            });
+            
+            Logger.info(`[Frontend Service] Sent ${event} to user ${userId} (${sent} sockets)`);
+            return sent > 0;
+        } catch (error) {
+            Logger.error(`[Frontend Service] Send to user error:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Broadcast to all users in a video session
+     * @param {string} videoId - Video ID
+     * @param {string} event - Event name
+     * @param {object} data - Event data
+     * @param {string} excludeSocket - Socket to exclude
+     */
+    broadcastToVideo(videoId, event, data, excludeSocket = null) {
+        try {
+            PlaybackSyncService.broadcastToVideoSession(videoId, this.io, event, data, excludeSocket);
+        } catch (error) {
+            Logger.error(`[Frontend Service] Broadcast to video error:`, error);
+        }
     }
 
     /**

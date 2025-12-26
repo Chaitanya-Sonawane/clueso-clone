@@ -33,6 +33,7 @@ router.post('/upload-audio', upload.single('audio'), (req, res) => {
 router.use("/recording", require("./recording-routes"));
 router.use("/frontend", require("./frontend-routes"));
 router.use("/python", require("./python-routes"));
+router.use("/translation", require("./translation-routes"));
 
 router.get('/info', InfoController.info);
 

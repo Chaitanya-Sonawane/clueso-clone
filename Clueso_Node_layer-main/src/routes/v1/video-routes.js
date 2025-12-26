@@ -19,8 +19,14 @@ router.post('/projects/:projectId/videos/upload',
 // Get all videos in a project
 router.get('/projects/:projectId/videos', VideoController.getProjectVideos);
 
-// Get specific video details
+// Get specific video details with enhanced metadata
 router.get('/projects/:projectId/videos/:sessionId', VideoController.getVideoDetails);
+
+// Get video metadata (duration, audio info, etc.) - CRITICAL for timeline sync
+router.get('/videos/:sessionId/metadata', VideoController.getVideoMetadata);
+
+// Update playback state (REST fallback for WebSocket)
+router.put('/videos/:sessionId/playback', VideoController.updatePlaybackState);
 
 // Get processing status
 router.get('/processing/:sessionId/status', VideoController.getProcessingStatus);

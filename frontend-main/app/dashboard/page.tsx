@@ -5,10 +5,12 @@ import { useProjectsStore } from '@/lib/projects-store';
 import { useAuthStore } from '@/lib/auth-store';
 import DashboardLayout from '@/components/DashboardLayout';
 import NewProjectModal from '@/components/NewProjectModal';
+import TeamCollaborationModal from '@/components/TeamCollaborationModal';
 import toast from 'react-hot-toast';
 
 export default function Dashboard() {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showTeamCollaborationModal, setShowTeamCollaborationModal] = useState(false);
   const { projects, isLoading, error, fetchProjects } = useProjectsStore();
   const { isAuthenticated } = useAuthStore();
 
@@ -253,7 +255,10 @@ export default function Dashboard() {
                 <p className="text-gray-400 text-sm">Create great content with your team</p>
               </div>
             </div>
-            <button className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:from-pink-600 hover:to-purple-700 transition-all">
+            <button 
+              onClick={() => setShowTeamCollaborationModal(true)}
+              className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:from-pink-600 hover:to-purple-700 transition-all"
+            >
               Add users
             </button>
           </div>
@@ -263,6 +268,16 @@ export default function Dashboard() {
       {/* New Project Modal */}
       {showNewProjectModal && (
         <NewProjectModal onClose={() => setShowNewProjectModal(false)} />
+      )}
+
+      {/* Team Collaboration Modal */}
+      {showTeamCollaborationModal && (
+        <TeamCollaborationModal 
+          isOpen={showTeamCollaborationModal}
+          onClose={() => setShowTeamCollaborationModal(false)}
+          projectId="demo_project"
+          videoId="demo_video_123"
+        />
       )}
     </DashboardLayout>
   );

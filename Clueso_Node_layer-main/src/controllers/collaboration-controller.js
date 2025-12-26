@@ -4,6 +4,216 @@ const { Logger } = require('../config');
 
 class CollaborationController {
     
+    // ===== TEAM COLLABORATION & INVITES =====
+    
+    async createCollaborationSession(req, res) {
+        try {
+            const { videoId } = req.params;
+            const { sessionName, allowComments, allowPlaybackControl, requireApproval, maxParticipants } = req.body;
+            const userId = req.user.id;
+
+            const session = await CollaborationService.createCollaborationSession(videoId, userId, {
+                sessionName,
+                allowComments,
+                allowPlaybackControl,
+                requireApproval,
+                maxParticipants
+            });
+
+            Logger.info(`[Collaboration] Created session ${session.id} for video ${videoId}`);
+
+            res.status(StatusCodes.CREATED).json({
+                success: true,
+                data: session
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Create session error:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async inviteUsers(req, res) {
+        try {
+            const { sessionId } = req.params;
+            const { invites } = req.body; // Array of { email, role, permissions }
+            const userId = req.user.id;
+
+            if (!Array.isArray(invites) || invites.length === 0) {
+                return res.status(StatusCodes.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Invites array is required and must not be empty'
+                });
+            }
+
+            const results = await CollaborationService.inviteUsers(sessionId, invites, userId);
+
+            const successCount = results.filter(r => r.status === 'sent').length;
+            const failureCount = results.filter(r => r.status === 'failed').length;
+
+            Logger.info(`[Collaboration] Sent ${successCount} invites, ${failureCount} failed for session ${sessionId}`);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                data: {
+                    results,
+                    summary: {
+                        total: results.length,
+                        sent: successCount,
+                        failed: failureCount
+                    }
+                }
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Invite users error:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async acceptInvite(req, res) {
+        try {
+            const { inviteToken } = req.params;
+            const userId = req.user.id;
+
+            const result = await CollaborationService.acceptInvite(inviteToken, userId);
+
+            Logger.info(`[Collaboration] User ${userId} accepted invite for session ${result.sessionId}`);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                data: result
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Accept invite error:', error);
+            res.status(StatusCodes.BAD_REQUEST).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async getSessionParticipants(req, res) {
+        try {
+            const { sessionId } = req.params;
+            const userId = req.user.id;
+
+            // Verify user is participant
+            const participants = await CollaborationService.getSessionParticipants(sessionId);
+            const userParticipant = participants.find(p => p.userId === userId);
+
+            if (!userParticipant) {
+                return res.status(StatusCodes.FORBIDDEN).json({
+                    success: false,
+                    message: 'Access denied to this collaboration session'
+                });
+            }
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                data: {
+                    participants,
+                    userRole: userParticipant.role,
+                    userPermissions: userParticipant.permissions
+                }
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Get participants error:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async removeParticipant(req, res) {
+        try {
+            const { sessionId, userId: targetUserId } = req.params;
+            const userId = req.user.id;
+
+            const success = await CollaborationService.removeParticipant(sessionId, targetUserId, userId);
+
+            if (!success) {
+                return res.status(StatusCodes.NOT_FOUND).json({
+                    success: false,
+                    message: 'Participant not found or already removed'
+                });
+            }
+
+            Logger.info(`[Collaboration] User ${targetUserId} removed from session ${sessionId} by ${userId}`);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                message: 'Participant removed successfully'
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Remove participant error:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async updateParticipantRole(req, res) {
+        try {
+            const { sessionId, userId: targetUserId } = req.params;
+            const { role, permissions } = req.body;
+            const userId = req.user.id;
+
+            const participant = await CollaborationService.addParticipant(sessionId, targetUserId, role, permissions);
+
+            Logger.info(`[Collaboration] Updated ${targetUserId} role to ${role} in session ${sessionId}`);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                data: participant
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Update participant role error:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async getCollaborationSession(req, res) {
+        try {
+            const { videoId } = req.params;
+            const userId = req.user.id;
+
+            const session = await CollaborationService.createCollaborationSession(videoId, userId);
+            const participants = await CollaborationService.getSessionParticipants(session.id);
+
+            res.status(StatusCodes.OK).json({
+                success: true,
+                data: {
+                    session,
+                    participants,
+                    userRole: participants.find(p => p.userId === userId)?.role || 'viewer'
+                }
+            });
+
+        } catch (error) {
+            Logger.error('[Collaboration] Get session error:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+    
     // ===== COMMENT MANAGEMENT =====
     
     async addComment(req, res) {

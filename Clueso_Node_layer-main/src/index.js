@@ -111,6 +111,11 @@ app.use('/recordings', express.static(path.join(__dirname, 'recordings')));
 // Serve processed videos and thumbnails
 app.use('/processed', express.static('processed'));
 
+// Serve demo page
+app.get('/demo', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'demo-collaboration.html'));
+});
+
 // IMPORTANT: Recording routes handle raw binary data, so they need special handling
 app.use('/api/recording', recordingRoutes);
 
