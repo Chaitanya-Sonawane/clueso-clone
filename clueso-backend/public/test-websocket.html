@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .event { background: #e2e3e5; padding: 10px; margin: 5px 0; border-radius: 3px; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    
+    <div id="status" class="status disconnected">Disconnected</div>
+    
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="registerSession()">Register Session</button>
+        <button onclick="triggerVideoSend()">Trigger Video Send</button>
+    </div>
+    
+    <h2>Events Log:</h2>
+    <div id="events"></div>
+    
+    <script>
+        let socket = null;
+        const sessionId = 'session_1766659357717_test';
+        const backendUrl = 'http://localhost:3001';
+        
+        function log(message, data = null) {
+            const eventsDiv = document.getElementById('events');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'event';
+            eventDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            if (data) {
+                eventDiv.innerHTML += `<br><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            eventsDiv.insertBefore(eventDiv, eventsDiv.firstChild);
+        }
+        
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            if (connected) {
+                statusDiv.textContent = 'Connected';
+                statusDiv.className = 'status connected';
+            } else {
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'status disconnected';
+            }
+        }
+        
+        function connect() {
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            log('Attempting to connect to ' + backendUrl);
+            
+            socket = io(backendUrl, {
+                transports: ['websocket', 'polling'],
+                timeout: 5000
+            });
+            
+            socket.on('connect', () => {
+                log('✅ Connected with ID: ' + socket.id);
+                updateStatus(true);
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log('❌ Disconnected: ' + reason);
+                updateStatus(false);
+            });
+            
+            socket.on('connect_error', (error) => {
+                log('❌ Connection error', error);
+                updateStatus(false);
+            });
+            
+            socket.on('registered', (data) => {
+                log('✅ Registered for session', data);
+            });
+            
+            socket.on('video', (data) => {
+                log('🎥 Video received', data);
+            });
+            
+            socket.on('audio', (data) => {
+                log('🔊 Audio received', data);
+            });
+            
+            socket.on('instructions', (data) => {
+                log('📋 Instructions received', data);
+            });
+            
+            socket.on('error', (error) => {
+                log('❌ Socket error', error);
+            });
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+        
+        function registerSession() {
+            if (socket && socket.connected) {
+                log('📝 Registering for session: ' + sessionId);
+                socket.emit('register', sessionId);
+            } else {
+                log('❌ Cannot register - not connected');
+            }
+        }
+        
+        async function triggerVideoSend() {
+            try {
+                log('📤 Triggering video send via test endpoint...');
+                const response = await fetch(`${backendUrl}/api/test/send-video/${sessionId}`);
+                const result = await response.json();
+                log('✅ Test endpoint response', result);
+            } catch (error) {
+                log('❌ Test endpoint error', error);
+            }
+        }
+        
+        // Auto-connect on page load
+        connect();
+    </script>
+</body>
+</html>

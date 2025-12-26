@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clueso Collaboration Demo</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e293b, #334155);
+            border-radius: 12px;
+        }
+        .demo-section {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid #334155;
+        }
+        .demo-section h3 {
+            color: #60a5fa;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.connected { background: #10b981; color: white; }
+        .status.disconnected { background: #ef4444; color: white; }
+        .status.pending { background: #f59e0b; color: white; }
+        
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin: 16px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        button:hover { background: #2563eb; }
+        button:disabled { 
+            background: #64748b; 
+            cursor: not-allowed; 
+        }
+        
+        .video-player {
+            background: #000;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 16px 0;
+        }
+        .timeline {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            margin: 16px 0;
+            position: relative;
+            cursor: pointer;
+        }
+        .timeline-progress {
+            height: 100%;
+            background: #3b82f6;
+            border-radius: 4px;
+            transition: width 0.1s;
+        }
+        .timeline-handle {
+            position: absolute;
+            top: -4px;
+            width: 16px;
+            height: 16px;
+            background: #60a5fa;
+            border-radius: 50%;
+            cursor: pointer;
+            transform: translateX(-50%);
+        }
+        
+        .log {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .log-entry {
+            margin-bottom: 4px;
+            padding: 2px 0;
+        }
+        .log-entry.info { color: #60a5fa; }
+        .log-entry.success { color: #10b981; }
+        .log-entry.error { color: #ef4444; }
+        .log-entry.warning { color: #f59e0b; }
+        
+        .participants {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 16px 0;
+        }
+        .participant {
+            background: #334155;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .participant.controller {
+            background: #059669;
+        }
+        .participant-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+        
+        .invite-form {
+            display: flex;
+            gap: 12px;
+            margin: 16px 0;
+            align-items: center;
+        }
+        .invite-form input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .invite-form select {
+            padding: 10px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 16px 0;
+        }
+        .metadata-item {
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .metadata-label {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+        .metadata-value {
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎥 Clueso Collaboration Demo</h1>
+        <p>Real-time video synchronization and team collaboration</p>
+        <div>
+            <span class="status" id="connectionStatus">Disconnected</span>
+            <span class="status" id="authStatus">Not Authenticated</span>
+        </div>
+    </div>
+
+    <!-- Video Timeline & Sync Demo -->
+    <div class="demo-section">
+        <h3>🎬 Video Timeline & Audio Synchronization</h3>
+        
+        <div class="metadata-grid">
+            <div class="metadata-item">
+                <div class="metadata-label">Original Duration</div>
+                <div class="metadata-value" id="originalDuration">--</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Current Time</div>
+                <div class="metadata-value" id="currentTime">--</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Has Audio</div>
+                <div class="metadata-value" id="hasAudio">--</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Audio Duration</div>
+                <div class="metadata-value" id="audioDuration">--</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Playback Rate</div>
+                <div class="metadata-value" id="playbackRate">--</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Active Users</div>
+                <div class="metadata-value" id="activeUsers">--</div>
+            </div>
+        </div>
+
+        <div class="video-player">
+            <div>📹 Demo Video Player</div>
+            <div class="timeline" id="timeline">
+                <div class="timeline-progress" id="timelineProgress"></div>
+                <div class="timeline-handle" id="timelineHandle"></div>
+            </div>
+            <div id="timeDisplay">00:00 / 00:00</div>
+        </div>
+
+        <div class="controls">
+            <button id="playBtn" disabled>▶️ Play</button>
+            <button id="pauseBtn" disabled>⏸️ Pause</button>
+            <button id="seekBtn" disabled>⏭️ Seek to 30s</button>
+            <button id="rateBtn" disabled>🏃 1.5x Speed</button>
+            <button id="joinVideoBtn">🎥 Join Video Session</button>
+        </div>
+    </div>
+
+    <!-- Real-time Collaboration Demo -->
+    <div class="demo-section">
+        <h3>👥 Team Collaboration & Invites</h3>
+        
+        <div class="participants" id="participants">
+            <!-- Participants will be added here -->
+        </div>
+
+        <div class="invite-form">
+            <input type="email" id="inviteEmail" placeholder="Enter email to invite">
+            <select id="inviteRole">
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+                <option value="admin">Admin</option>
+            </select>
+            <button id="inviteBtn" disabled>📧 Send Invite</button>
+        </div>
+
+        <div class="controls">
+            <button id="createSessionBtn">🏗️ Create Collaboration Session</button>
+            <button id="grantControlBtn" disabled>🎮 Grant Control</button>
+        </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="demo-section">
+        <h3>📋 Real-time Event Log</h3>
+        <div class="log" id="eventLog"></div>
+        <div class="controls">
+            <button onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+    </div>
+
+    <script>
+        class ClueosoCollaborationDemo {
+            constructor() {
+                this.socket = null;
+                this.isConnected = false;
+                this.isAuthenticated = false;
+                this.currentVideoId = 'demo_video_' + Date.now();
+                this.sessionId = null;
+                this.currentTime = 0;
+                this.duration = 120; // Demo duration
+                this.isPlaying = false;
+                this.playbackRate = 1.0;
+                this.isController = false;
+                
+                this.initializeUI();
+                this.connectWebSocket();
+            }
+
+            initializeUI() {
+                // Timeline interaction
+                const timeline = document.getElementById('timeline');
+                timeline.addEventListener('click', (e) => {
+                    if (!this.isController) return;
+                    const rect = timeline.getBoundingClientRect();
+                    const percent = (e.clientX - rect.left) / rect.width;
+                    const seekTime = percent * this.duration;
+                    this.seek(seekTime);
+                });
+
+                // Control buttons
+                document.getElementById('playBtn').onclick = () => this.play();
+                document.getElementById('pauseBtn').onclick = () => this.pause();
+                document.getElementById('seekBtn').onclick = () => this.seek(30);
+                document.getElementById('rateBtn').onclick = () => this.changeRate(1.5);
+                document.getElementById('joinVideoBtn').onclick = () => this.joinVideo();
+                document.getElementById('createSessionBtn').onclick = () => this.createSession();
+                document.getElementById('inviteBtn').onclick = () => this.sendInvite();
+                document.getElementById('grantControlBtn').onclick = () => this.grantControl();
+            }
+
+            connectWebSocket() {
+                this.log('Connecting to WebSocket...', 'info');
+                this.socket = io('http://localhost:3000');
+
+                this.socket.on('connect', () => {
+                    this.isConnected = true;
+                    this.updateConnectionStatus();
+                    this.log('✅ Connected to WebSocket', 'success');
+                    this.authenticate();
+                });
+
+                this.socket.on('disconnect', () => {
+                    this.isConnected = false;
+                    this.isAuthenticated = false;
+                    this.updateConnectionStatus();
+                    this.log('❌ Disconnected from WebSocket', 'error');
+                });
+
+                this.socket.on('authenticated', (data) => {
+                    this.isAuthenticated = true;
+                    this.updateConnectionStatus();
+                    this.log(`✅ Authenticated as ${data.username}`, 'success');
+                });
+
+                this.socket.on('playback_state', (state) => {
+                    this.updatePlaybackState(state);
+                    this.log(`📊 Playback state: ${state.isPlaying ? 'Playing' : 'Paused'} at ${state.currentTime.toFixed(1)}s`, 'info');
+                });
+
+                this.socket.on('playback_control', (data) => {
+                    this.handlePlaybackControl(data);
+                    this.log(`🎮 ${data.initiatedBy?.username || 'Someone'} ${data.action} at ${data.currentTime?.toFixed(1) || 0}s`, 'info');
+                });
+
+                this.socket.on('user_joined', (data) => {
+                    this.updateParticipants();
+                    this.log(`👋 ${data.user.username} joined the session`, 'success');
+                });
+
+                this.socket.on('user_left', (data) => {
+                    this.updateParticipants();
+                    this.log(`👋 ${data.user.username} left the session`, 'warning');
+                });
+
+                this.socket.on('control_granted', (data) => {
+                    this.isController = true;
+                    this.updateControlButtons();
+                    this.log(`🎮 You now have playback control`, 'success');
+                });
+
+                this.socket.on('error', (error) => {
+                    this.log(`❌ Error: ${error.message}`, 'error');
+                });
+            }
+
+            authenticate() {
+                const userId = 'demo_user_' + Math.random().toString(36).substr(2, 9);
+                const username = 'DemoUser' + Math.floor(Math.random() * 1000);
+                
+                this.socket.emit('authenticate', {
+                    userId: userId,
+                    username: username,
+                    token: 'demo_token'
+                });
+            }
+
+            joinVideo() {
+                if (!this.isAuthenticated) {
+                    this.log('❌ Please authenticate first', 'error');
+                    return;
+                }
+
+                const videoMetadata = {
+                    originalDuration: this.duration,
+                    hasAudio: true,
+                    audioTrackDuration: this.duration
+                };
+
+                this.socket.emit('join_video', {
+                    videoId: this.currentVideoId,
+                    videoMetadata: videoMetadata
+                });
+
+                this.log(`🎥 Joining video session: ${this.currentVideoId}`, 'info');
+            }
+
+            play() {
+                if (!this.isController) {
+                    this.log('❌ You do not have playback control', 'error');
+                    return;
+                }
+
+                this.socket.emit('playback_control', {
+                    action: 'play',
+                    currentTime: this.currentTime
+                });
+            }
+
+            pause() {
+                if (!this.isController) {
+                    this.log('❌ You do not have playback control', 'error');
+                    return;
+                }
+
+                this.socket.emit('playback_control', {
+                    action: 'pause',
+                    currentTime: this.currentTime
+                });
+            }
+
+            seek(time) {
+                if (!this.isController) {
+                    this.log('❌ You do not have playback control', 'error');
+                    return;
+                }
+
+                this.socket.emit('playback_control', {
+                    action: 'seek',
+                    currentTime: time
+                });
+            }
+
+            changeRate(rate) {
+                if (!this.isController) {
+                    this.log('❌ You do not have playback control', 'error');
+                    return;
+                }
+
+                this.socket.emit('playback_control', {
+                    action: 'rate_change',
+                    playbackRate: rate,
+                    currentTime: this.currentTime
+                });
+            }
+
+            updatePlaybackState(state) {
+                this.currentTime = state.currentTime;
+                this.duration = state.originalDuration;
+                this.isPlaying = state.isPlaying;
+                this.playbackRate = state.playbackRate || 1.0;
+
+                // Update metadata display
+                document.getElementById('originalDuration').textContent = `${state.originalDuration.toFixed(1)}s`;
+                document.getElementById('currentTime').textContent = `${state.currentTime.toFixed(1)}s`;
+                document.getElementById('hasAudio').textContent = state.hasAudio ? 'Yes' : 'No';
+                document.getElementById('audioDuration').textContent = `${state.audioTrackDuration.toFixed(1)}s`;
+                document.getElementById('playbackRate').textContent = `${this.playbackRate}x`;
+                document.getElementById('activeUsers').textContent = state.activeUsers;
+
+                // Update timeline
+                this.updateTimeline();
+                this.updateTimeDisplay();
+            }
+
+            handlePlaybackControl(data) {
+                if (data.currentTime !== undefined) {
+                    this.currentTime = data.currentTime;
+                }
+                if (data.playbackRate !== undefined) {
+                    this.playbackRate = data.playbackRate;
+                }
+                
+                this.isPlaying = data.action === 'play';
+                this.updateTimeline();
+                this.updateTimeDisplay();
+            }
+
+            updateTimeline() {
+                const progress = (this.currentTime / this.duration) * 100;
+                document.getElementById('timelineProgress').style.width = `${progress}%`;
+                document.getElementById('timelineHandle').style.left = `${progress}%`;
+            }
+
+            updateTimeDisplay() {
+                const current = this.formatTime(this.currentTime);
+                const total = this.formatTime(this.duration);
+                document.getElementById('timeDisplay').textContent = `${current} / ${total}`;
+            }
+
+            formatTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+
+            updateConnectionStatus() {
+                const connStatus = document.getElementById('connectionStatus');
+                const authStatus = document.getElementById('authStatus');
+                
+                connStatus.textContent = this.isConnected ? 'Connected' : 'Disconnected';
+                connStatus.className = `status ${this.isConnected ? 'connected' : 'disconnected'}`;
+                
+                authStatus.textContent = this.isAuthenticated ? 'Authenticated' : 'Not Authenticated';
+                authStatus.className = `status ${this.isAuthenticated ? 'connected' : 'disconnected'}`;
+
+                this.updateControlButtons();
+            }
+
+            updateControlButtons() {
+                const canControl = this.isAuthenticated && this.isController;
+                document.getElementById('playBtn').disabled = !canControl;
+                document.getElementById('pauseBtn').disabled = !canControl;
+                document.getElementById('seekBtn').disabled = !canControl;
+                document.getElementById('rateBtn').disabled = !canControl;
+                document.getElementById('joinVideoBtn').disabled = !this.isAuthenticated;
+                document.getElementById('inviteBtn').disabled = !this.isAuthenticated;
+                document.getElementById('grantControlBtn').disabled = !this.isController;
+            }
+
+            updateParticipants() {
+                // This would normally fetch from the server
+                // For demo purposes, we'll show mock participants
+                const participantsDiv = document.getElementById('participants');
+                participantsDiv.innerHTML = `
+                    <div class="participant controller">
+                        <div class="participant-dot"></div>
+                        You (Controller)
+                    </div>
+                `;
+            }
+
+            createSession() {
+                this.log('🏗️ Creating collaboration session...', 'info');
+                // This would make an API call to create a session
+                setTimeout(() => {
+                    this.sessionId = 'session_' + Date.now();
+                    this.log(`✅ Created session: ${this.sessionId}`, 'success');
+                }, 1000);
+            }
+
+            sendInvite() {
+                const email = document.getElementById('inviteEmail').value;
+                const role = document.getElementById('inviteRole').value;
+                
+                if (!email) {
+                    this.log('❌ Please enter an email address', 'error');
+                    return;
+                }
+
+                this.log(`📧 Sending invite to ${email} as ${role}...`, 'info');
+                // This would make an API call to send the invite
+                setTimeout(() => {
+                    this.log(`✅ Invite sent to ${email}`, 'success');
+                    document.getElementById('inviteEmail').value = '';
+                }, 1000);
+            }
+
+            grantControl() {
+                this.log('🎮 Control granting feature would allow selecting a user to grant control to', 'info');
+            }
+
+            log(message, type = 'info') {
+                const logDiv = document.getElementById('eventLog');
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+                entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+                logDiv.appendChild(entry);
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('eventLog').innerHTML = '';
+        }
+
+        // Initialize the demo when page loads
+        window.addEventListener('load', () => {
+            new ClueosoCollaborationDemo();
+        });
+    </script>
+</body>
+</html>
