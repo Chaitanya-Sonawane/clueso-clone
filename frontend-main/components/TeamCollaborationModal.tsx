@@ -226,7 +226,8 @@ export default function TeamCollaborationModal({
         throw new Error(data.message);
       }
     } catch (error) {
-      addLog(`Failed to create session: ${error.message}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addLog(`Failed to create session: ${errorMessage}`, 'error');
       toast.error('Failed to create collaboration session');
     }
   };
@@ -266,7 +267,8 @@ export default function TeamCollaborationModal({
         throw new Error(data.message);
       }
     } catch (error) {
-      addLog(`Failed to send invite: ${error.message}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addLog(`Failed to send invite: ${errorMessage}`, 'error');
       toast.error('Failed to send invite');
     } finally {
       setIsInviting(false);

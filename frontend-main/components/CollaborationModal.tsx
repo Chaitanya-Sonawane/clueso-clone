@@ -50,6 +50,16 @@ export default function CollaborationModal({ isOpen, onClose, projectId, videoId
   
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  const addLog = (message: string, type: string) => {
+    setEventLog(prev => [...prev, { message, type, timestamp: new Date() }]);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     if (isOpen && !socket) {
       connectWebSocket();
@@ -64,7 +74,7 @@ export default function CollaborationModal({ isOpen, onClose, projectId, videoId
   }, [isOpen]);
 
   const connectWebSocket = () => {
-    const newSocket = io('http://localhost:3000');
+    const newSocket = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000');
     
     newSocket.on('connect', () => {
       setIsConnected(true);
@@ -110,351 +120,335 @@ export default function CollaborationModal({ isOpen, onClose, projectId, videoId
     });
 
     newSocket.on('control_granted', () => {
-      setIsController(t};
-
-  )
-    </div>/div>v>
-      <</di        div>
-    </      iv>
-    </d
-               ))}    
-     </div>        e}
-      ssagentry.me}] {ring()eTimeSttamp.toLocalentry.times     [{                    >
-      }
-     }`              '
-  ext-blue-400't                    
-low-400' : ? 'text-yelng' === 'warniry.typeent              :
-      -400'  'text-red= 'error' ?ntry.type ==    e               
- en-400' : 'text-grecess' ?sucy.type === '        entr           ${
-  b-1={`mlassName       c      
-     ndex}y={ike            v
-       <di            x) => (
-   y, indeentr((.map  {eventLog    ">
-        -sm text-monofonty-auto 48 overflow-d-lg p-4 h-underoate-800 slame="bg-assN <div cl
-                    
-   ></div          button>
-           </      Clear Log
-         🗑️       >
-          s"
-    on-colortihite transi:text-wy-400 hovere="text-gralassNam    c     ])}
-       tEventLog([) => se{(nClick=     o          <button
-                  </h3>
-         vent Log
-  -time E  📋 Real           2">
-   -center gap- flex itemsted text-whibolmi font-se-lgxtame="teh3 classN   <           -4">
-center mbems--between itstifyex ju"flme=iv classNa         <d">
-   ed-lg p-6e-700 round="bg-slativ className          <d}
-og */ent L    {/* Ev
-
-       </div>        /div>
-         <>
-    </button           rol
-   ant Cont  🎮 Gr            >
-          "
-      colorssition--medium traned-lg font2 roundite px-4 py-xt-wh-600 teray-gd:bg disable700-orange- hover:bg600orange-bg-ame="classN               roller}
- sContbled={!idisa          
-      tton         <bu>
-     </button             n
- ate Sessiore       🏗️ C>
-                     
-  ors"nsition-coldium trat-me fonrounded-lg px-4 py-2 -whitee-700 text:bg-purploverrple-600 h-puassName="bgcl         }
-       on{createSessiick=        onCl        <button
-         ap">
-      flex-wr-3x gapme="flediv classNa <           trols */}
- Con{/* Session           iv>
-
-   </d       >
-   on</butt              d Invite
-   📧 Sen                   >
-
-        s"-colortion transiediumfont-m rounded-lg py-2te px-4 t-whiray-600 texg-g:bdisabled700 :bg-pink--600 hover="bg-pinkssName       cla        cated}
- uthentiled={!isAdisab         }
-       ={sendInvite  onClick            n
-  <butto      
-        elect>       </s>
-       in</optionin">Admvalue="admon   <opti       on>
-       Editor</optiitor">"edalue=option v     <       on>
-    pti">Viewer</oewer"viue=ption val<o                     >
-        
- 00"ue-5-blcus:border-none focus:outlinehite fot-wded-lg texroune-600 slater border-ate-800 bord-slbgpy-2 "px-3 lassName=    c     }
-       | 'admin') | 'editor'  'viewer'lue asvat.ole(e.targeetInviteR => s(e)  onChange={           
-   le}Roalue={invite        v     lect
-    <se           />
-                lue-500"
-cus:border-b fononee-outlins:curay-400 for-gceholdete pla text-whiounded-lglate-600 rorder-srder b-800 bo-2 bg-slate px-3 py00px]1 min-w-[2="flex-lassName   c            nvite"
-  iemail toder="Enter    placehol         e)}
-    et.valutargeEmail(e.nvit) => setIChange={(e on     
-          ail}eEmalue={invit      v          ail"
-"em type=         put
-      <in      ">
-        ex-wrap-3 mb-4 fl"flex gapv className=         <di/}
-   m ** Invite For      {/
-       </div>
-             ))}
-       >
-            </div   r)'}
-      ontrolleer && '(CntrollCoipant.isticname} {part.userrticipan{pa                  />
-ull" ed-f0 round-402 bg-greenh-Name="w-2   <div class                       >
-       }`}
-                    y-300'
- text-gra-slate-600' : 'bgwhiten-600 text-reebg-gler ? 'isControlrticipant.          pa        -2 ${
-  r gap items-centext-sm flexteull rounded-fpy-2 ={`px-3  className              
-   id}cipant.tiey={par           k      iv
-       <d       
-   pant => (rticis.map(paarticipant {p    
-         ">4ap mb- flex-wrp-2"flex game=div classNa    </}
-        ticipants ** Par    {/ 
-        
-           /h3> <       
-    sion & Inviteatollabor  👥 Team C        ">
-    -2apems-center glex itte mb-4 fold text-whisemibfont-"text-lg ame= classN  <h3   ">
-       lg p-6 mb-6700 rounded--slate-e="bgsNam <div clas      n */}
-   boratiom Colla  {/* Tea     
-     </div>
-      iv>
-        </d
-       </button>       
-      onVideo Sessi   🎥 Join    
-                     >
-   olors"ion-cm transitdiufont-me rounded-lg px-4 py-2ite -whay-600 textgrisabled:bg-een-700 d hover:bg-green-600bg-grassName="   cl      
-       nticated}ed={!isAuthe   disabl           ession}
-  oSide{joinVonClick=              n
-       <butto  
-       ton>ut </b            ed
- 🏃 1.5x Spe                  >
-         lors"
-   ransition-coedium td-lg font-mnde-2 roue px-4 pyext-whit600 tgray-d:bg- disableblue-700 hover:bg-ue-600e="bg-blNam    class        ler}
-    rol!isCont={ed     disabl
-           1.5)}rentTime, ckState.cur, playbae_change'ol('ratackContrlayb=> handleP)   onClick={(            utton
-        <b
-        utton>  </b        
-    eek to 30s ⏭️ S       
-         >            
- -colors"ransitionnt-medium tnded-lg fo-4 py-2 rout-white px00 texbg-gray-6bled:disaue-700 over:bg-bl600 hue-bg-blame="      classN          
-oller}!isContred={  disabl         30)}
-     , eek'trol('sybackConla> handlePick={() =    onCl       on
-            <butt  on>
-        </butt     
-      ause        ⏸️ P
-              >
-        s"n-colortransitiodium  font-me2 rounded-lgpy-4 -white px-extray-600 t-g:bg disabledblue-700bg-0 hover:lue-60sName="bg-bclas               troller}
- Conbled={!issa   di         e')}
-    us'paol(ybackContrePla{() => handl onClick=             
-  button       <n>
-       </butto         ay
-     ️ Pl           ▶
-     >              
-s"tion-colornsiium trag font-med2 rounded-lpx-4 py- text-white 600y-g-graisabled:bue-700 d:bg-bl hoverblue-600g-sName="b        clas      ler}
-  isControlabled={!         dis   
-    ay')}plntrol('ckCoePlaybadl() => hanick={nCl   o             <button
-     
-         p">lex-wra-3 fapex g"flassName=  <div cl         
- ls */}Controk aybac      {/* Pl
-
-          </div>      >
-        </div        
-n)}Duratioginale.oriState(playbackim{formatTentTime)} / .currtatelaybackSormatTime(p         {f
-       00">"text-gray-3 className=    <div              </div>
-             />
-           
-  %` }}n) * 100}Duratioiginalate.orybackSte / plae.currentTimplaybackStat${(t: ` lef    style={{              1/2"
-translate-x-ansform - trinterll cursor-poounded-fu400 rblue-w-4 h-4 bg-6px] lute top-[-ame="absolassN    c    
-                <div          />
-                 %` }}
-* 100}) urationlDate.originaplaybackStntTime / te.curreStaack`${(playbwidth: style={{                  "
- on-100l duratisition-alan tr-full500 roundedue-h-full bg-blassName="      cl     v 
-             <di       >
-               
-  ick}neCldleTimelian={h     onClick          4"
-  mb-vetiinter relapoor-l cursed-ful0 round60-2 bg-slate-"w-full hclassName=            Ref}
-    timelineef={  r        
-        <div      v>
-       Player</di Demo Video ite mb-4">📹me="text-whsNaas <div cl            mb-4">
-  erxt-centg p-8 teunded-lrok "bg-blacassName= cl<div          
-  }yer Mock *//* Video Pla         {   
-
-v>   </di      
-     </div>        iv>
-    }x</dlaybackRatebackState.paymibold">{plite font-see="text-whamv classN  <di       v>
-       k Rate</dibac-1">Playgray-400 mbt-xs text-texame="div classN  <            -lg">
-  -3 roundede-800 pg-slatName="b <div class         >
-          </div
-        1)}s</div>ixed(rentTime.toFckState.curd">{playbafont-semibole whitt-"texsName=   <div clas       >
-      nt Time</divb-1">Curre-gray-400 ms text"text-xName=<div class             lg">
-   ounded- r-800 p-3slate="bg-assNamediv cl      <     
-       </div>
-          (1)}s</div>edon.toFixnalDuratiState.origi">{playback-semibold font"text-whiteame=lassN c      <div      div>
-    tion</1">Dura-400 mb-t-gray-xs tex="textNamess  <div cla           
-   g">3 rounded-l800 p--slate-"bgssName=v cla   <di           -4 mb-6">
-3 gapgrid-cols-2 md:grid-cols-"grid =assName     <div cl  
-     a Grid */}dat{/* Meta                     
-</h3>
-             
-  chronizationio Synmeline & Audideo Ti 🎬 V           >
-  er gap-2"items-cente mb-4 flex ext-whitt-semibold tg fon"text-lame=assNh3 cl        <b-6">
-    -6 m-lg p700 rounded"bg-slate-me=v classNa      <di}
-    e & Sync */ Timelineo   {/* Vid        </div>
-
-       v>
-  di     </  on>
-        </butt          g>
-      </sv           
-6l12 12" /> 18L18 6M6 "M6th={2} d=" strokeWidoin="roundstrokeLinej" p="roundLineca<path stroke            
-      ">24 24x="0 0 viewBoor" "currentCol" stroke="none6" fill=w-6 h-sName="vg clas        <s            >
-         s"
- coloransition-e trxt-whittey-400 hover:ra"text-g className=              onClose}
- lick={    onC           utton
-   <b            /span>
- <           ted'}
-  icaot Authent : 'Ncated'thentid ? 'Auenticateth       {isAu             }`}>
-        
-  white' text-g-yellow-500te' : 'b500 text-whi 'bg-green-enticated ?isAuth            d ${
-    ont-semiboltext-xs ffull y-1 rounded-me={`px-3 psNa <span clas          </span>
-             
-    connected'}ed' : 'Disctonneted ? 'C{isConnec              }`}>
-         e'
-        text-whited-500ite' : 'bg-rext-wh-green-500 t ? 'bgConnected    is         d ${
-   -semibol-xs fontull textounded-f3 py-1 rsName={`px-aspan cl <s           
-  >ter gap-4"ems-cen"flex itlassName=  <div c         
- div>        </p>
-    tion</am collaboraation and teniznchroideo sy>Real-time v-gray-400"ame="textclassN         <p     </h2>
- ionoratllabeam Cowhite">Text--bold tontl fe="text-2xassNam  <h2 cl         
-      <div>
-         ter mb-6">enitems-ceen -betwlex justify"fe=amsNasiv cl     <d*/}
-     er  Head        {/*">
-  me="p-6<div classNa">
-        w-y-auto0vh] overfloll max-h-[9-4xl w-fued-xl max-wndrou-slate-800 "bg className=iv<d  4">
-    er z-50 p-ntceify- justcenterflex items-acity-50 black bg-opt-0 bg-"fixed insessName=iv cla    <d
-return (
-
-  urn null; retif (!isOpen) };
-
-  
- ')}`;, '0rt(2ng().padSta.toStri)}:${secst(2, '0'ar().padStngoStrirn `${mins.t   retus % 60);
- or(secondloMath.fcs =     const se
- / 60);(secondsth.floor mins = Ma   const) => {
- nds: number = (seco formatTimeconst  ;
-  };
-
-w Date() }])ne: mestampype, timessage, trev, { ev => [...pog(prsetEventL   ) => {
- type: stringtring, e: ssagg = (mesLo add;
-
-  const  ]);
-  }roller }
-  : isContler, isControl 'admin'le:, roame: 'You'ernid: '1', us
-      { pants([rtici setPaserver
-   from the  come  wouldpp, thisin real a for demo - icipants part   // Mock() => {
- ipants = eParticst updat
-  con};
-');
-  ion createdon sessoratiess('Collabt.succ;
-    toasess')ucc`, 'swSessionId}sion: ${neration sesed collaboog(`Creat
-    addLd);ionIssd(newSesionI    setSeste.now();
-+ Daession_' 'sId = essiononst newS{
-    c= () => ion  createSess
-  const;
-
-    }
-  }, 'error');e'invitsend ('Failed to Log   add');
-   iteend inv to sailedast.error('F      to{
-) tch (error} ca
-         }invite');
- d  to senedror('Failrow new Er       th} else {
-     l('');
-  eEmaivitetIn      s);
-  'success'eRole}`, } as ${inviteEmailnvitnt to ${ig(`Invite se   addLo}`);
-     nviteEmail{i to $Invite sentss(`ucce    toast.s {
-    ok)f (response.     i
- );
-
-      }       })ionId
- sess sessionId:       jectId,
-   tId: prorojec        p
-  viteRole,role: in       ,
-    inviteEmailmail:     efy({
-     N.stringidy: JSO    bo    },
-    ',
-    sonpplication/je': 'atent-Typ      'Conrs: {
-    ade       he 'POST',
-     method:', {
-    tenviion/iatborlapi/col001/a:3localhost('http://ait fetchsponse = aw re      constnd
-r backe call to youke an API would ma  // This{
-    try   }
-
-     return;
-  ');
-     l addressr an emaientee or('Pleast.err    toas
-  teEmail) {nvi if (!i   
-) => {ync (dInvite = as
-  const sen;
-Time);
-  }, seekk'trol('seeaybackConePlhandl  
-  ;ationinalDurtate.orig* playbackS percent  =st seekTime
-    conect.width;ft) / rrect.le.clientX - rcent = (epeonst ct();
-    cClientReBoundingrent.getef.curlineRt = timest rec
-    conurn;
-    ) retrrentelineRef.cutim ! ||llersContro    if (!i => {
-DivElement>)TMLEvent<Ht.Mouse Reac= (e:melineClick Tionst handle  c
-  };
-
-Data);', controlrolck_contaybaet.emit('plck}
-
-    sote;
-    ckRate = rata.playbarolDa  conted) {
-    == undefin(rate !
-    if 
-    };
-Timeate.currentybackSt? time : pla undefined !==ime: time  currentT,
-        action
-    any = {ontrolData:t cns
-    co }
-n;
-         returntrol');
-ayback cot have plou do noast.error('Y     toer) {
- troll| !isCon |ocketif (!s {
-    mber) =>?: nuumber, rateime?: n, ttion: string (ac =kControllePlaybac handnstco};
-
-  info');
-  ideoId}`, 'rrentVsion: ${cudeo sesviog(`Joining  addL
-   
-
-    });adata videoMettadata:  videoMe  
-  ideoId,: currentV     videoIdeo', {
- id('join_vet.emit
-    sockn
-    };
-ratioDunal.origikStateon: playbackDuratidioTrac au     io: true,
-  hasAud,
-    lDurationinae.origStatlaybacktion: piginalDura
-      oradata = {st videoMet
-    con.now()}`;|| DateId project`video_${d || eoIdeoId = vid currentVinstco   
-    }
-
-   return;t');
-    nect firsease con.error('Pl      toastcated) {
-entiAuthcket || !isif (!so
-    ) => {ssion = (deoSet joinVi;
-
-  cons);
-  }ken'
-    }mo_to'de:   token    ame,
-rname: usern
-      useserId,serId: u    u
-  , {uthenticate'e.emit('atanc   socketIns   
- * 1000);
- h.random() at(M Math.floorser' +ername = 'U  const us
-   9);).substr(2,tring(36m().toSMath.randouser_' + erId = 't usons=> {
-    c) : SocketcketInstanceticate = (southen aonst
-  };
-
-  c);ckett(newSo   setSocke
- 
-  });  ssage);
-or.meor(errst.err   toa
-    'error');sage}`,or.mes ${errLog(`Error:
-      add) => {', (errorrorn('erocket.o
-    newS
+      setIsController(true);
+      addLog('You now have playback control', 'success');
+      toast.success('You now have playback control');
     });
-);k control'aclayb pu now have.success('Yo  toast;
-    ') 'successcontrol',playback have u now Yog('dLo
-      adrue);
+
+    newSocket.on('error', (error) => {
+      toast.error(error.message);
+      addLog(`Error: ${error.message}`, 'error');
+    });
+
+    setSocket(newSocket);
+  };
+
+  const authenticate = (socketInstance: Socket) => {
+    const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+    const username = 'User' + Math.floor(Math.random() * 1000);
+    
+    socketInstance.emit('authenticate', {
+      userId,
+      username,
+      token: 'demo_token'
+    });
+  };
+
+  const joinVideoSession = () => {
+    if (!socket || !isAuthenticated) {
+      toast.error('Please connect first');
+      return;
+    }
+
+    const currentVideoId = videoId || `video_${projectId || Date.now()}`;
+    const videoMetadata = {
+      originalDuration: playbackState.originalDuration,
+      hasAudio: true,
+      audioTrackDuration: playbackState.originalDuration
+    };
+
+    socket.emit('join_video', {
+      videoId: currentVideoId,
+      videoMetadata
+    });
+
+    addLog(`Joining video session: ${currentVideoId}`, 'info');
+  };
+
+  const handlePlaybackControl = (action: string, time?: number, rate?: number) => {
+    if (!socket || !isController) {
+      toast.error('You do not have playback control');
+      return;
+    }
+
+    const controlData: any = {
+      action,
+      currentTime: time !== undefined ? time : playbackState.currentTime
+    };
+
+    if (rate !== undefined) {
+      controlData.playbackRate = rate;
+    }
+
+    socket.emit('playback_control', controlData);
+  };
+
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isController || !timelineRef.current) {
+      return;
+    }
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const seekTime = percent * playbackState.originalDuration;
+    
+    handlePlaybackControl('seek', seekTime);
+  };
+
+  const sendInvite = async () => {
+    if (!inviteEmail) {
+      toast.error('Please enter an email address');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:3000/api/collaboration/invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: inviteEmail,
+          role: inviteRole,
+          projectId,
+          sessionId
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`Invite sent to ${inviteEmail} as ${inviteRole}`);
+        addLog(`Invite sent to ${inviteEmail}`, 'success');
+        setInviteEmail('');
+      } else {
+        throw new Error('Failed to send invite');
+      }
+    } catch (error) {
+      toast.error('Failed to send invite');
+      addLog('Failed to send invite', 'error');
+    }
+  };
+
+  const createSession = () => {
+    const newSessionId = 'session_' + Date.now();
+    setSessionId(newSessionId);
+    addLog(`Created collaboration session: ${newSessionId}`, 'success');
+    toast.success('Collaboration session created');
+  };
+
+  const updateParticipants = () => {
+    // Mock participants for demo - in real app, this would come from the server
+    const participants = [
+      { id: '1', username: 'You', role: 'admin' as const, isController }
+    ];
+    setParticipants(participants);
+  };
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white">Team Collaboration</h2>
+            <p className="text-gray-400">Real-time video synchronization and team collaboration</p>
+            <div className="flex items-center gap-4">
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+              }`}>
+                {isConnected ? 'Connected' : 'Disconnected'}
+              </span>
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                isAuthenticated ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white'
+              }`}>
+                {isAuthenticated ? 'Authenticated' : 'Not Authenticated'}
+              </span>
+              <button
+                onClick={onClose}
+                className="w-6 h-6 text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Video Timeline & Audio Synchronization */}
+          <div className="bg-slate-700 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+              🎬 Video Timeline & Audio Synchronization
+            </h3>
+            
+            {/* Metadata Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <div className="text-xs text-gray-400 mb-1">Duration</div>
+                <div className="text-white font-semibold">{formatTime(playbackState.originalDuration)}</div>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <div className="text-xs text-gray-400 mb-1">Current Time</div>
+                <div className="text-white font-semibold">{formatTime(playbackState.currentTime)}</div>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <div className="text-xs text-gray-400 mb-1">Playback Rate</div>
+                <div className="text-white font-semibold">{playbackState.playbackRate}x</div>
+              </div>
+            </div>
+
+            {/* Video Player Mock */}
+            <div className="bg-black rounded-lg p-8 text-center mb-4">
+              <div className="text-white mb-4">📹 Demo Video Player</div>
+            </div>
+
+            {/* Timeline */}
+            <div 
+              ref={timelineRef}
+              className="w-full h-2 bg-slate-600 rounded-full cursor-pointer relative mb-4"
+              onClick={handleTimelineClick}
+            >
+              <div 
+                className="h-full bg-blue-500 rounded-full transition-all duration-100"
+                style={{ width: `${(playbackState.currentTime / playbackState.originalDuration) * 100}%` }}
+              />
+              <div 
+                className="absolute top-[-6px] w-4 h-4 bg-blue-600 rounded-full cursor-pointer transform -translate-x-1/2"
+                style={{ left: `${(playbackState.currentTime / playbackState.originalDuration) * 100}%` }}
+              />
+            </div>
+
+            {/* Playback Controls */}
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={() => handlePlaybackControl('play')}
+                disabled={!isController}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                ▶️ Play
+              </button>
+              <button
+                onClick={() => handlePlaybackControl('pause')}
+                disabled={!isController}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                ⏸️ Pause
+              </button>
+              <button
+                onClick={() => handlePlaybackControl('seek', 30)}
+                disabled={!isController}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                ⏭️ Seek to 30s
+              </button>
+              <button
+                onClick={() => handlePlaybackControl('rate_change', playbackState.currentTime, 1.5)}
+                disabled={!isController}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                🏃 1.5x Speed
+              </button>
+            </div>
+          </div>
+
+          {/* Team Collaboration & Invites */}
+          <div className="bg-slate-700 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+              👥 Team Collaboration & Invites
+            </h3>
+            
+            {/* Participants */}
+            <div className="flex gap-2 flex-wrap mb-4">
+              {participants.map(participant => (
+                <div
+                  key={participant.id}
+                  className={`px-3 py-2 rounded-full text-sm flex items-center gap-2 ${
+                    participant.isController ? 'bg-green-600 text-white' : 'bg-slate-600 text-gray-300'
+                  }`}
+                >
+                  <div className="w-2 h-2 bg-green-400 rounded-full" />
+                  {participant.username} {participant.isController && '(Controller)'}
+                </div>
+              ))}
+            </div>
+
+            {/* Invite Form */}
+            <div className="flex gap-3 mb-4 flex-wrap">
+              <input
+                type="email"
+                placeholder="Enter email to invite"
+                className="flex-1 min-w-[200px] px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+              <select
+                className="px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as 'viewer' | 'editor' | 'admin')}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button
+                onClick={sendInvite}
+                disabled={!isAuthenticated}
+                className="bg-pink-600 hover:bg-pink-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                📧 Send Invite
+              </button>
+            </div>
+
+            {/* Session Controls */}
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={createSession}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                🏗️ Create Session
+              </button>
+              <button
+                onClick={joinVideoSession}
+                disabled={!isAuthenticated}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                🎥 Join Video Session
+              </button>
+            </div>
+          </div>
+
+          {/* Event Log */}
+          <div className="bg-slate-700 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                📋 Real-time Event Log
+              </h3>
+              <button
+                onClick={() => setEventLog([])}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                🗑️ Clear Log
+              </button>
+            </div>
+            <div className="bg-slate-800 rounded-lg p-4 h-48 overflow-y-auto font-mono text-sm">
+              {eventLog.map((entry, index) => (
+                <div
+                  key={index}
+                  className={`mb-1 ${
+                    entry.type === 'success' ? 'text-green-400' : 
+                    entry.type === 'error' ? 'text-red-400' : 
+                    entry.type === 'warning' ? 'text-yellow-400' : 'text-blue-400'
+                  }`}
+                >
+                  [{entry.timestamp.toLocaleTimeString()}] {entry.message}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
